@@ -72,3 +72,27 @@ class Recommendation:
     warnings: List[str]
     data_note: str
 
+
+@dataclass(frozen=True)
+class TradePrices:
+    current_price: float | None
+    entry_price: float | None
+    target_price: float | None
+    stop_loss: float | None
+
+
+@dataclass(frozen=True)
+class TradeSignalMetadata:
+    data_source: str
+    analyzed_at: str
+
+
+@dataclass(frozen=True)
+class TradeSignal:
+    ticker: str
+    action: str
+    confidence_score: float
+    prices: TradePrices
+    rationale: List[str]
+    metadata: TradeSignalMetadata
+

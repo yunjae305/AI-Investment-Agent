@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from ai_invest_agent.models import InvestmentRequest, Recommendation, SecuritySnapshot
+from datetime import datetime, timezone
+
+from ai_invest_agent.models import (
+    InvestmentRequest,
+    Recommendation,
+    SecuritySnapshot,
+    TradePrices,
+    TradeSignal,
+    TradeSignalMetadata,
+)
 
 
 PROPENSITY_BUDGET = {
@@ -193,3 +202,155 @@ def _risk_level(snapshot: SecuritySnapshot) -> str:
     if volatility >= 25 or snapshot.risk.delisting_risk == "보통":
         return "보통"
     return "낮음"
+
+
+# ──────────────────────────────────────────────
+# TradeSignal pipeline (Blueprint JSON schema)
+# ──────────────────────────────────────────────
+
+_PROPENSITY_WEIGHTS = {
+    "안정추구형": {"technical": 0.4, "fundamental": 0.4, "risk_penalty": 0.2},
+    "중립형":     {"technical": 0.5, "fundamental": 0.3, "risk_penalty": 0.2},
+    "공격투자형": {"technical": 0.6, "fundamental": 0.2, "risk_penalty": 0.2},
+}
+_DEFAULT_WEIGHTS = {"technical": 0.5, "fundamental": 0.3, "risk_penalty": 0.2}
+
+
+def _confidence_score(snapshot: SecuritySnapshot, propensity: str) -> float:
+    """0~100 범위의 확신도 점수 산출. 성향별 가중치 적용."""
+    weights = _PROPENSITY_WEIGHTS.get(propensity, _DEFAULT_WEIGHTS)
+    tech = snapshot.technicals
+    fund = snapshot.fundamentals
+    risk = snapshot.risk
+
+    # ── 기술적 점수 (0~100) ──
+    tech_score = 0.0
+    tech_count = 0
+
+    if tech.rsi is not None:
+        # RSI 50 근방을 최고점으로, 과열(>70)/과매도(<30) 구간은 감점
+        rsi_score = max(0.0, 50.0 - abs(50.0 - tech.rsi))  # 0~50
+        tech_score += rsi_score * 2  # 0~100
+        tech_count += 1
+
+    if tech.moving_average_5 and tech.moving_average_20 and tech.moving_average_60:
+        # 정배열이면 만점, 역배열이면 0점
+        if tech.moving_average_5 >= tech.moving_average_20 >= tech.moving_average_60:
+            tech_score += 100
+        elif tech.moving_average_5 < tech.moving_average_20:
+            tech_score += 0
+        else:
+            tech_score += 50
+        tech_count += 1
+
+    if tech.macd is not None and tech.macd_signal is not None:
+        tech_score += 100 if tech.macd >= tech.macd_signal else 30
+        tech_count += 1
+
+    tech_final = (tech_score / tech_count) if tech_count else 50.0
+
+    # ── 기본적 점수 (0~100) ──
+    fund_score = 0.0
+    fund_count = 0
+
+    if fund.per is not None and fund.per > 0:
+        # PER 10~25 이상적, 그 이상은 감점
+        per_score = max(0.0, 100.0 - max(0.0, fund.per - 10.0) * 2.5)
+        fund_score += min(per_score, 100.0)
+        fund_count += 1
+
+    if fund.roe is not None:
+        roe_score = min(fund.roe * 4.0, 100.0)  # ROE 25%가 만점
+        fund_score += roe_score
+        fund_count += 1
+
+    if fund.pbr is not None and fund.pbr > 0:
+        pbr_score = max(0.0, 100.0 - (fund.pbr - 1.0) * 15.0)
+        fund_score += min(pbr_score, 100.0)
+        fund_count += 1
+
+    fund_final = (fund_score / fund_count) if fund_count else 50.0
+
+    # ── 리스크 패널티 (0~100, 높을수록 불리) ──
+    risk_penalty = 0.0
+    if risk.volatility_30d is not None:
+        risk_penalty += min(risk.volatility_30d, 50.0)  # 최대 50점 패널티
+    risk_penalty += len(risk.negative_news_flags) * 5.0
+    risk_penalty = min(risk_penalty, 100.0)
+
+    raw = (
+        tech_final * weights["technical"]
+        + fund_final * weights["fundamental"]
+        - risk_penalty * weights["risk_penalty"]
+    )
+    return round(max(0.0, min(raw, 100.0)), 1)
+
+
+def _trade_rationale(snapshot: SecuritySnapshot, propensity: str) -> list[str]:
+    tech = snapshot.technicals
+    fund = snapshot.fundamentals
+    lines: list[str] = []
+
+    if tech.moving_average_5 and tech.moving_average_20 and tech.moving_average_5 >= tech.moving_average_20:
+        if tech.moving_average_20 and tech.moving_average_60 and tech.moving_average_20 >= tech.moving_average_60:
+            lines.append("단기 이동평균선이 장기 이동평균선을 상향 돌파 (Golden Cross).")
+        else:
+            lines.append("단기 이동평균이 중기 이동평균 위에 위치해 단기 상승 추세.")
+
+    if tech.macd is not None and tech.macd_signal is not None and tech.macd >= tech.macd_signal:
+        lines.append("MACD가 시그널선 위에 위치하여 상승 모멘텀이 유지됩니다.")
+
+    if fund.per is not None and fund.per < 20:
+        lines.append(f"PER {fund.per:.1f}로 동종 업계 대비 저평가 구간에 위치.")
+    elif fund.per is not None and fund.per >= 40:
+        lines.append(f"PER {fund.per:.1f}로 고평가 구간이므로 밸류에이션 부담이 존재.")
+
+    if fund.roe is not None and fund.roe >= 15:
+        lines.append(f"ROE {fund.roe:.1f}%로 우수한 자기자본이익률을 유지.")
+
+    propensity_note = {
+        "공격투자형": "투자자의 '공격형' 성향에 부합하는 높은 변동성 및 성장 잠재력.",
+        "안정추구형": "투자자의 '안정형' 성향에 맞춰 저변동성 및 배당 수익 중심으로 평가.",
+        "중립형": "투자자의 '중립형' 성향에 부합하는 균형적 성장/안정 프로파일.",
+    }.get(propensity)
+    if propensity_note:
+        lines.append(propensity_note)
+
+    if not lines:
+        lines.append("추세 신호가 혼재하여 추가적인 모니터링이 필요합니다.")
+
+    return lines
+
+
+def build_trade_signals(
+    request: InvestmentRequest,
+    snapshots: list[SecuritySnapshot],
+    data_source: str = "mock",
+) -> list[TradeSignal]:
+    """Blueprint JSON 스키마에 맞는 TradeSignal 목록을 반환합니다."""
+    analyzed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ranked = sorted(snapshots, key=_score_snapshot, reverse=True)[:5]
+    signals: list[TradeSignal] = []
+    for snapshot in ranked:
+        entry = _entry_price(snapshot)
+        target = _target_price(snapshot)
+        stop = _stop_loss_price(snapshot)
+        signals.append(
+            TradeSignal(
+                ticker=snapshot.symbol,
+                action=_action(snapshot),
+                confidence_score=_confidence_score(snapshot, request.propensity),
+                prices=TradePrices(
+                    current_price=snapshot.price,
+                    entry_price=entry,
+                    target_price=target,
+                    stop_loss=stop,
+                ),
+                rationale=_trade_rationale(snapshot, request.propensity),
+                metadata=TradeSignalMetadata(
+                    data_source=data_source,
+                    analyzed_at=analyzed_at,
+                ),
+            )
+        )
+    return signals

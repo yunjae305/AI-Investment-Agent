@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from typing import Iterable
 
 from ai_invest_agent.analysis import build_portfolio_guidance, build_strategy_summary
-from ai_invest_agent.models import InvestmentRequest, Recommendation, SecuritySnapshot
+from ai_invest_agent.models import InvestmentRequest, Recommendation, SecuritySnapshot, TradeSignal
 
 
 def build_report_context(
@@ -161,3 +162,27 @@ def _guess_generated_from(snapshots: list[SecuritySnapshot]) -> str:
         if snapshot.captured_at is not None:
             return snapshot.captured_at.isoformat(sep=" ")
     return "실시간 API 호출이 필요합니다"
+
+
+def render_trade_signals_json(signals: list[TradeSignal], indent: int = 2) -> str:
+    """TradeSignal 목록을 Blueprint 스키마의 JSON 문자열로 직렬화합니다."""
+    def _to_dict(signal: TradeSignal) -> dict:
+        return {
+            "ticker": signal.ticker,
+            "action": signal.action,
+            "confidence_score": signal.confidence_score,
+            "prices": {
+                "current_price": signal.prices.current_price,
+                "entry_price": signal.prices.entry_price,
+                "target_price": signal.prices.target_price,
+                "stop_loss": signal.prices.stop_loss,
+            },
+            "rationale": signal.rationale,
+            "metadata": {
+                "data_source": signal.metadata.data_source,
+                "analyzed_at": signal.metadata.analyzed_at,
+            },
+        }
+
+    payload = [_to_dict(s) for s in signals]
+    return json.dumps(payload, ensure_ascii=False, indent=indent)
