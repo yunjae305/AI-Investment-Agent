@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Investment Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Mock Trading Studio</p>
+          <h1>AI 투자 분석과 모의 매매 시그널을 웹에서 바로 검토</h1>
+          <p class="hero-text">
+            입력 조건에 맞춰 종목 후보를 평가하고, 진입가·목표가·손절가와 JSON 시그널을 한 화면에서 확인합니다.
+          </p>
+        </div>
+        <div class="hero-card">
+          <p class="hero-card-label">데이터 상태</p>
+          <strong>{% if result %}{{ result.data_source_label }}{% else %}Yahoo Finance / Mock Fallback{% endif %}</strong>
+          <p>Yahoo Finance 사용을 우선 시도하고, 실패 시 mock 데이터로 대체할 수 있게 구성했습니다.</p>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel input-panel">
+          <div class="section-heading">
+            <p class="section-kicker">Input</p>
+            <h2>투자 조건</h2>
+          </div>
+          {% if error %}
+          <div class="error-banner">{{ error }}</div>
+          {% endif %}
+          <form action="{{ url_for('analyze') }}" method="post" class="input-form">
+            <label>
+              <span>자산</span>
+              <input type="text" name="asset" value="{{ form.asset }}" placeholder="10000000">
+            </label>
+            <label>
+              <span>데이터 소스</span>
+              <select name="data_source">
+                {% for option in [("yfinance", "Yahoo Finance"), ("mock", "Mock Data")] %}
+                <option value="{{ option[0] }}" {% if form.data_source == option[0] %}selected{% endif %}>{{ option[1] }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              <span>투자성향</span>
+              <select name="propensity">
+                {% for option in ["안정추구형", "중립형", "공격투자형"] %}
+                <option value="{{ option }}" {% if form.propensity == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              <span>시장 지역</span>
+              <select name="market">
+                {% for option in ["국내", "미국"] %}
+                <option value="{{ option }}" {% if form.market == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              <span>투자 기간</span>
+              <select name="duration">
+                {% for option in ["단타", "중기", "장기"] %}
+                <option value="{{ option }}" {% if form.duration == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">분석 실행</button>
+          </form>
+          <div class="api-hint">
+            <strong>API Endpoint</strong>
+            <code>POST /api/analyze</code>
+          </div>
+        </section>
+
+        <section class="results">
+          {% if result %}
+          <section class="panel summary-panel">
+            <div class="section-heading">
+              <p class="section-kicker">#1</p>
+              <h2>투자 전략 요약</h2>
+            </div>
+            <div class="summary-meta">
+              <span>{{ result.request.asset_label }}</span>
+              <span>{{ result.request.propensity }}</span>
+              <span>{{ result.request.market }}</span>
+              <span>{{ result.request.duration }}</span>
+              <span>{{ result.data_source_label }}</span>
+            </div>
+            <p class="summary-text">{{ result.summary }}</p>
+            <p class="summary-text">기준 시각: {{ result.generated_from }}</p>
+            {% if result.provider_warning %}
+            <div class="error-banner">{{ result.provider_warning }}</div>
+            {% endif %}
+            <ul class="guidance-list">
+              {% for item in result.guidance %}
+              <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </section>
+
+          <section class="panel table-panel">
+            <div class="section-heading">
+              <p class="section-kicker">#2</p>
+              <h2>상세 종목 추천 리스트</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>종목명(티커)</th>
+                    <th>현재가</th>
+                    <th>추천 사유</th>
+                    <th>주요 수치</th>
+                    <th>위험도</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in result.rows %}
+                  <tr>
+                    <td>
+                      <strong>{{ row.name }}</strong>
+                      <span>{{ row.symbol }}</span>
+                    </td>
+                    <td>{{ row.current_price }}</td>
+                    <td>{{ row.rationale }}</td>
+                    <td>{{ row.metrics }}</td>
+                    <td><span class="risk-pill risk-{{ row.risk_level }}">{{ row.risk_level }}</span></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="grid-two">
+            <section class="panel">
+              <div class="section-heading">
+                <p class="section-kicker">#3</p>
+                <h2>매매 가이드라인</h2>
+              </div>
+              <div class="action-cards">
+                {% for row in result.rows %}
+                <article class="action-card">
+                  <div class="card-topline">
+                    <strong>{{ row.name }}</strong>
+                    <span>{{ row.symbol }}</span>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>매수 추천가</dt>
+                      <dd>{{ row.entry_price }}</dd>
+                    </div>
+                    <div>
+                      <dt>매도 목표가</dt>
+                      <dd>{{ row.target_price }}</dd>
+                    </div>
+                    <div>
+                      <dt>기대 수익률</dt>
+                      <dd>{{ row.expected_return_pct }}</dd>
+                    </div>
+                    <div>
+                      <dt>손절 기준</dt>
+                      <dd>{{ row.stop_loss_price }}</dd>
+                    </div>
+                  </dl>
+                </article>
+                {% endfor %}
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <p class="section-kicker">#4</p>
+                <h2>리스크 센터</h2>
+              </div>
+              <div class="risk-cards">
+                {% for card in result.risk_cards %}
+                <article class="risk-card">
+                  <div class="card-topline">
+                    <strong>{{ card.name }}</strong>
+                    <span>{{ card.symbol }}</span>
+                  </div>
+                  <ul>
+                    {% for warning in card.warnings %}
+                    <li>{{ warning }}</li>
+                    {% endfor %}
+                  </ul>
+                  <p class="data-note">{{ card.data_note }}</p>
+                </article>
+                {% endfor %}
+              </div>
+            </section>
+          </section>
+
+          <section class="panel">
+            <div class="section-heading">
+              <p class="section-kicker">#5</p>
+              <h2>자동 매매 시그널 JSON</h2>
+            </div>
+            <div class="signal-grid">
+              {% for signal in result.signals %}
+              <article class="signal-card">
+                <div class="card-topline">
+                  <strong>{{ signal.symbol }}</strong>
+                  <span class="signal-action">{{ signal.action }}</span>
+                </div>
+                <pre>{{ signal.pretty_json }}</pre>
+              </article>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="panel disclaimer-panel">
+            <p>{{ result.disclaimer }}</p>
+          </section>
+          {% else %}
+          <section class="panel empty-state">
+            <p class="section-kicker">Ready</p>
+            <h2>왼쪽 조건을 입력하면 분석 결과가 여기에 표시됩니다.</h2>
+            <p>현재 화면은 웹 전환 완료 상태이며, 실데이터 미연동 단계에서는 mock 데이터 기반으로 동작합니다.</p>
+          </section>
+          {% endif %}
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
