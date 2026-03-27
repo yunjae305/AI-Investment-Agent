@@ -142,6 +142,20 @@
             </ul>
           </section>
 
+          <section class="panel">
+            <div class="section-heading">
+              <p class="section-kicker">Persona</p>
+              <h2>Investor Persona</h2>
+            </div>
+            <p class="summary-text">{{ result.persona.summary }}</p>
+            <ul class="guidance-list">
+              <li>Risk tolerance: {{ result.persona.risk_tolerance }}</li>
+              <li>Sector interests: {{ result.persona.sector_interests | join(", ") }}</li>
+              <li>Decision values: {{ result.persona.decision_values | join(", ") }}</li>
+              <li>Source: {{ result.persona.source }}</li>
+            </ul>
+          </section>
+
           <section class="panel table-panel">
             <div class="section-heading">
               <p class="section-kicker">#2</p>
@@ -256,6 +270,10 @@
 
           <section class="panel disclaimer-panel">
             <p>{{ result.disclaimer }}</p>
+            <p>Verification passed: {{ result.multi_agent.verification.passed }}</p>
+            {% for issue in result.multi_agent.verification.issues %}
+            <p>Verification issue: {{ issue }}</p>
+            {% endfor %}
             {% if result.execution_result %}
             <p>Ledger: {{ result.execution_result.ledger_file }}</p>
             {% endif %}

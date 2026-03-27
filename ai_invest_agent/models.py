@@ -27,7 +27,9 @@ class TechnicalIndicators:
 
 @dataclass(frozen=True)
 class FundamentalIndicators:
+    eps: float | None
     per: float | None
+    bps: float | None
     pbr: float | None
     roe: float | None
     dividend_yield: float | None
@@ -72,3 +74,67 @@ class Recommendation:
     warnings: List[str]
     data_note: str
 
+
+@dataclass(frozen=True)
+class InvestorPersona:
+    summary: str
+    risk_tolerance: str
+    sector_interests: List[str]
+    decision_values: List[str]
+    source: str = "rule-based"
+
+
+@dataclass(frozen=True)
+class TopicSelection:
+    symbol: str
+    name: str
+    rationale: str
+    source: str = "rule-based"
+
+
+@dataclass(frozen=True)
+class AnalysisPlanItem:
+    symbol: str
+    name: str
+    focus_priority: str
+    keywords: List[str]
+    source: str = "rule-based"
+
+
+@dataclass(frozen=True)
+class ResearchFinding:
+    symbol: str
+    name: str
+    facts: List[str]
+    negative_news_flags: List[str]
+    source: str = "rule-based"
+
+
+@dataclass(frozen=True)
+class StockInsight:
+    symbol: str
+    name: str
+    thesis: str
+    scenario: str
+    key_risks: List[str]
+    source: str = "rule-based"
+
+
+@dataclass(frozen=True)
+class VerificationResult:
+    passed: bool
+    issues: List[str]
+    corrections: List[str]
+    source: str = "rule-based"
+
+
+@dataclass(frozen=True)
+class MultiAgentAnalysis:
+    persona: InvestorPersona
+    topics: List[TopicSelection]
+    plan: List[AnalysisPlanItem]
+    research: List[ResearchFinding]
+    insights: List[StockInsight]
+    markdown_report: str
+    verification: VerificationResult
+    model_map: dict[str, str] = field(default_factory=dict)

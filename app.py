@@ -62,6 +62,8 @@ def config_status():
             "kis_real_configured": _has_kis_credentials("real"),
             "pdf_export_provider": os.getenv("PDF_EXPORT_PROVIDER", "local"),
             "cloudmersive_configured": bool(os.getenv("CLOUDMERSIVE_API_KEY")),
+            "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+            "ai_default_model": os.getenv("AI_DEFAULT_MODEL", "gpt-4.1-mini"),
             "reports_dir": str(REPORTS_DIR),
         }
     )
@@ -156,7 +158,7 @@ def _run_analysis(form: dict, auto_execute: bool = False) -> dict:
         data_source=resolved_source,
         provider_warning=provider_warning,
     )
-    pdf_path = _write_pdf_report(result["markdown_report"])
+    pdf_path = _write_pdf_report(result["markdown_report"], result.get("html_report"))
 
     execution_result = None
     if auto_execute:
@@ -169,12 +171,10 @@ def _run_analysis(form: dict, auto_execute: bool = False) -> dict:
     result["execution_broker"] = form["execution_broker"]
     result["execution_env"] = form["execution_env"]
     return attach_artifacts(result, pdf_path=pdf_path, execution_result=execution_result)
-
-
-def _write_pdf_report(report_text: str) -> Path:
+def _write_pdf_report(report_text: str, html_report: str | None = None) -> Path:
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
     output_path = REPORTS_DIR / f"investment_report_{timestamp}.pdf"
-    export_report(report_text, output_path)
+    export_report(report_text, output_path, html_document=html_report)
     return output_path
 
 

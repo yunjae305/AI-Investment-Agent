@@ -17,11 +17,12 @@ def export_report(
     report_text: str,
     output_path: Path,
     title: str = "Investment Report",
+    html_document: str | None = None,
 ) -> tuple[Path, str]:
     provider = os.getenv("PDF_EXPORT_PROVIDER", "local").strip().lower()
     if provider == "cloudmersive":
         try:
-            export_with_cloudmersive(report_text, output_path, title=title)
+            export_with_cloudmersive(report_text, output_path, title=title, html_document=html_document)
             return output_path, "cloudmersive"
         except Exception:
             pass
@@ -29,12 +30,17 @@ def export_report(
     return output_path, "local"
 
 
-def export_with_cloudmersive(report_text: str, output_path: Path, title: str = "Investment Report") -> Path:
+def export_with_cloudmersive(
+    report_text: str,
+    output_path: Path,
+    title: str = "Investment Report",
+    html_document: str | None = None,
+) -> Path:
     api_key = os.getenv("CLOUDMERSIVE_API_KEY", "").strip()
     if not api_key:
         raise PdfExportError("CLOUDMERSIVE_API_KEY is not configured")
 
-    html_payload = _build_html_document(report_text, title=title)
+    html_payload = html_document or _build_html_document(report_text, title=title)
     response = requests.post(
         "https://api.cloudmersive.com/convert/html/to/pdf",
         headers={
