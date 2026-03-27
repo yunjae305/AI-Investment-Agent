@@ -13,16 +13,16 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Mock Trading Studio</p>
-          <h1>AI 투자 분석과 모의 매매 시그널을 웹에서 바로 검토</h1>
+          <p class="eyebrow">Hybrid Research + Paper Trading</p>
+          <h1>한미 주식 분석, PDF 리포트, 모의매매 실행</h1>
           <p class="hero-text">
-            입력 조건에 맞춰 종목 후보를 평가하고, 진입가·목표가·손절가와 JSON 시그널을 한 화면에서 확인합니다.
+            국내와 미국 주식을 함께 분석하고, 추천 결과를 PDF로 저장하며, 조건에 따라 로컬 모의매매 에이전트가 주문을 기록합니다.
           </p>
         </div>
         <div class="hero-card">
-          <p class="hero-card-label">데이터 상태</p>
-          <strong>{% if result %}{{ result.data_source_label }}{% else %}Yahoo Finance / Mock Fallback{% endif %}</strong>
-          <p>Yahoo Finance 사용을 우선 시도하고, 실패 시 mock 데이터로 대체할 수 있게 구성했습니다.</p>
+          <p class="hero-card-label">Current source</p>
+          <strong>{% if result %}{{ result.data_source_label }}{% else %}Hybrid Research{% endif %}</strong>
+          <p>기본값은 하이브리드 공급자이며, 실시간성은 Yahoo Finance 계열, 심화 연구는 DefeatBeta 연동을 시도합니다.</p>
         </div>
       </header>
 
@@ -43,13 +43,13 @@
             <label>
               <span>데이터 소스</span>
               <select name="data_source">
-                {% for option in [("yfinance", "Yahoo Finance"), ("mock", "Mock Data")] %}
+                {% for option in [("hybrid", "Hybrid"), ("kis", "KIS Open API"), ("yfinance", "Yahoo Finance"), ("defeatbeta", "DefeatBeta Research"), ("mock", "Mock Data")] %}
                 <option value="{{ option[0] }}" {% if form.data_source == option[0] %}selected{% endif %}>{{ option[1] }}</option>
                 {% endfor %}
               </select>
             </label>
             <label>
-              <span>투자성향</span>
+              <span>투자 성향</span>
               <select name="propensity">
                 {% for option in ["안정추구형", "중립형", "공격투자형"] %}
                 <option value="{{ option }}" {% if form.propensity == option %}selected{% endif %}>{{ option }}</option>
@@ -57,7 +57,7 @@
               </select>
             </label>
             <label>
-              <span>시장 지역</span>
+              <span>시장</span>
               <select name="market">
                 {% for option in ["국내", "미국"] %}
                 <option value="{{ option }}" {% if form.market == option %}selected{% endif %}>{{ option }}</option>
@@ -65,18 +65,42 @@
               </select>
             </label>
             <label>
-              <span>투자 기간</span>
+              <span>기간</span>
               <select name="duration">
-                {% for option in ["단타", "중기", "장기"] %}
+                {% for option in ["단기", "중기", "장기"] %}
                 <option value="{{ option }}" {% if form.duration == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              <span>자동 모의매매</span>
+              <select name="auto_execute">
+                <option value="" {% if form.auto_execute != "on" %}selected{% endif %}>끄기</option>
+                <option value="on" {% if form.auto_execute == "on" %}selected{% endif %}>켜기</option>
+              </select>
+            </label>
+            <label>
+              <span>실행 브로커</span>
+              <select name="execution_broker">
+                {% for option in [("auto", "Auto"), ("kis", "KIS Open API"), ("mock", "Mock Broker")] %}
+                <option value="{{ option[0] }}" {% if form.execution_broker == option[0] %}selected{% endif %}>{{ option[1] }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              <span>실행 환경</span>
+              <select name="execution_env">
+                {% for option in [("demo", "Demo"), ("real", "Real")] %}
+                <option value="{{ option[0] }}" {% if form.execution_env == option[0] %}selected{% endif %}>{{ option[1] }}</option>
                 {% endfor %}
               </select>
             </label>
             <button type="submit">분석 실행</button>
           </form>
           <div class="api-hint">
-            <strong>API Endpoint</strong>
+            <strong>API</strong>
             <code>POST /api/analyze</code>
+            <code>POST /api/execute</code>
           </div>
         </section>
 
@@ -96,8 +120,20 @@
             </div>
             <p class="summary-text">{{ result.summary }}</p>
             <p class="summary-text">기준 시각: {{ result.generated_from }}</p>
+            {% if result.pdf_report %}
+            <p class="summary-text"><a href="{{ url_for('download_report', filename=result.pdf_report.file_name) }}">PDF 다운로드</a></p>
+            {% endif %}
             {% if result.provider_warning %}
             <div class="error-banner">{{ result.provider_warning }}</div>
+            {% endif %}
+            {% if result.execution_result %}
+            <div class="api-hint">
+              <strong>Paper trading</strong>
+              <p>{{ result.execution_result.executed_count }}건 주문이 {{ result.execution_result.broker }}로 기록되었습니다.</p>
+              {% if result.execution_result.environment %}
+              <p>Environment: {{ result.execution_result.environment }}</p>
+              {% endif %}
+            </div>
             {% endif %}
             <ul class="guidance-list">
               {% for item in result.guidance %}
@@ -109,16 +145,16 @@
           <section class="panel table-panel">
             <div class="section-heading">
               <p class="section-kicker">#2</p>
-              <h2>상세 종목 추천 리스트</h2>
+              <h2>추천 종목</h2>
             </div>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>종목명(티커)</th>
+                    <th>종목</th>
                     <th>현재가</th>
                     <th>추천 사유</th>
-                    <th>주요 수치</th>
+                    <th>핵심 지표</th>
                     <th>위험도</th>
                   </tr>
                 </thead>
@@ -144,7 +180,7 @@
             <section class="panel">
               <div class="section-heading">
                 <p class="section-kicker">#3</p>
-                <h2>매매 가이드라인</h2>
+                <h2>매매 가이드</h2>
               </div>
               <div class="action-cards">
                 {% for row in result.rows %}
@@ -155,11 +191,11 @@
                   </div>
                   <dl>
                     <div>
-                      <dt>매수 추천가</dt>
+                      <dt>진입가</dt>
                       <dd>{{ row.entry_price }}</dd>
                     </div>
                     <div>
-                      <dt>매도 목표가</dt>
+                      <dt>목표가</dt>
                       <dd>{{ row.target_price }}</dd>
                     </div>
                     <div>
@@ -167,7 +203,7 @@
                       <dd>{{ row.expected_return_pct }}</dd>
                     </div>
                     <div>
-                      <dt>손절 기준</dt>
+                      <dt>손절가</dt>
                       <dd>{{ row.stop_loss_price }}</dd>
                     </div>
                   </dl>
@@ -179,7 +215,7 @@
             <section class="panel">
               <div class="section-heading">
                 <p class="section-kicker">#4</p>
-                <h2>리스크 센터</h2>
+                <h2>리스크</h2>
               </div>
               <div class="risk-cards">
                 {% for card in result.risk_cards %}
@@ -203,7 +239,7 @@
           <section class="panel">
             <div class="section-heading">
               <p class="section-kicker">#5</p>
-              <h2>자동 매매 시그널 JSON</h2>
+              <h2>자동 실행 payload</h2>
             </div>
             <div class="signal-grid">
               {% for signal in result.signals %}
@@ -220,12 +256,15 @@
 
           <section class="panel disclaimer-panel">
             <p>{{ result.disclaimer }}</p>
+            {% if result.execution_result %}
+            <p>Ledger: {{ result.execution_result.ledger_file }}</p>
+            {% endif %}
           </section>
           {% else %}
           <section class="panel empty-state">
             <p class="section-kicker">Ready</p>
-            <h2>왼쪽 조건을 입력하면 분석 결과가 여기에 표시됩니다.</h2>
-            <p>현재 화면은 웹 전환 완료 상태이며, 실데이터 미연동 단계에서는 mock 데이터 기반으로 동작합니다.</p>
+            <h2>조건을 입력하면 분석 결과가 표시됩니다.</h2>
+            <p>기본값은 하이브리드 연구 공급자이며, 실패 시 mock 데이터로 안전하게 대체됩니다.</p>
           </section>
           {% endif %}
         </section>

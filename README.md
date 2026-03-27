@@ -1,6 +1,12 @@
 # AI Investment Agent Web
 
-투자 조건을 입력받아 종목 후보를 평가하고, 웹 대시보드와 자동 매매용 JSON 시그널을 생성하는 Flask 기반 시스템입니다.
+Flask 기반 투자 분석 앱입니다. 현재 상태에서 아래 기능이 연결돼 있습니다.
+
+- 국내/미국 추천 분석
+- PDF 리포트 자동 생성
+- 모의매매 실행 payload 생성
+- KIS Open API 연동 준비
+- KIS 미설정 시 자동 mock fallback
 
 ## Install
 
@@ -8,19 +14,50 @@
 python -m pip install -r requirements.txt
 ```
 
-## Run Web
+## Optional Config
+
+KIS 모의투자 또는 실전투자를 쓰려면 루트에 `.env` 파일을 만들고 [.env.example](/c:/Users/kyj31/Desktop/hacker/.env.example) 형식으로 값을 넣으면 됩니다.
+
+필수 키:
+
+- `KIS_PAPER_APP_KEY`
+- `KIS_PAPER_APP_SECRET`
+- `KIS_PAPER_ACCOUNT_NO`
+
+선택 키:
+
+- `KIS_PAPER_ACCOUNT_PRODUCT_CODE`
+- `KIS_APP_KEY`
+- `KIS_APP_SECRET`
+- `KIS_ACCOUNT_NO`
+- `KIS_ACCOUNT_PRODUCT_CODE`
+- `KIS_USER_AGENT`
+
+## Run
 
 ```powershell
 python app.py
 ```
 
-브라우저에서 `http://127.0.0.1:5000`에 접속합니다.
+브라우저:
+
+```text
+http://127.0.0.1:5000
+```
+
+설정 상태 확인:
+
+```text
+GET /api/config-status
+```
 
 ## API
 
+### Analyze
+
 `POST /api/analyze`
 
-예시 JSON:
+예시:
 
 ```json
 {
@@ -28,32 +65,51 @@ python app.py
   "propensity": "중립형",
   "market": "국내",
   "duration": "중기",
-  "data_source": "yfinance"
+  "data_source": "hybrid",
+  "auto_execute": true,
+  "execution_broker": "auto",
+  "execution_env": "demo"
 }
 ```
 
-## Current State
+### Execute
 
-- 기본 데이터 소스는 `yfinance`입니다.
-- `yfinance` 초기화 또는 호출 실패 시 `MockMarketDataProvider`로 fallback 할 수 있습니다.
-- Yahoo Finance 응답 특성상 일부 기본적 지표는 비어 있을 수 있습니다.
+`POST /api/execute`
 
-## Files
+예시:
 
-- `app.py`: Flask 웹 서버 및 API 엔드포인트
-- `main.py`: CLI 진입점
-- `templates/index.html`: 웹 UI 템플릿
-- `static/styles.css`: 스타일시트
-- `ai_invest_agent/models.py`: 요청/지표/추천 데이터 모델
-- `ai_invest_agent/providers.py`: 시장 데이터 공급자 인터페이스 및 mock 구현
-- `ai_invest_agent/providers.py`: 시장 데이터 공급자 인터페이스, Yahoo Finance 구현, mock fallback
-- `ai_invest_agent/analysis.py`: 점수화, 진입가/목표가/손절가, 시그널 생성
-- `ai_invest_agent/reporting.py`: 웹/CLI 공용 결과 컨텍스트 및 Markdown 렌더링
+```json
+{
+  "execution_broker": "auto",
+  "execution_env": "demo",
+  "signals": [
+    {
+      "symbol": "005930.KS",
+      "action": "BUY",
+      "quantity": 1,
+      "entry_price": 70000,
+      "reason": "test"
+    }
+  ]
+}
+```
 
-## Next Integration
+## Data Sources
 
-실데이터 연동 시 `ai_invest_agent/providers.py`에 새 공급자를 추가하면 됩니다.
+- `hybrid`: 기본값. yfinance 중심, 가능하면 defeatbeta 연구 보강
+- `kis`: KIS 시세 사용 시도, 미설정이면 fallback
+- `yfinance`: Yahoo Finance
+- `defeatbeta`: 미국 리서치 보강
+- `mock`: 로컬 mock 데이터
 
-- 한국투자증권 API, Alpaca, Polygon, Finnhub 등에서 시세/재무/뉴스 수집
-- `MarketDataProvider.list_candidates()`가 `SecuritySnapshot` 목록을 반환하도록 구현
-- PDF 생성기는 `build_report_context()` 또는 Markdown 출력 결과를 후처리해 연결
+## Execution Brokers
+
+- `auto`: KIS 설정이 있으면 KIS, 없으면 mock
+- `kis`: KIS 강제 사용
+- `mock`: 로컬 모의브로커
+
+## Output
+
+- PDF 리포트: `generated_reports/`
+- mock 주문 ledger: `mock_trading/`
+- KIS 주문 ledger: `kis_trading/`

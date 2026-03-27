@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .cache/
+.env
+generated_reports/
+mock_trading/
+kis_trading/

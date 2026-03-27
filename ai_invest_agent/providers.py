@@ -4,7 +4,9 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from math import isnan
 from pathlib import Path
+import sys
 
+from ai_invest_agent.kis_adapter import KisApiClient, infer_overseas_exchange
 from ai_invest_agent.models import (
     FundamentalIndicators,
     RiskSnapshot,
@@ -223,6 +225,12 @@ class YFinanceMarketDataProvider(MarketDataProvider):
 
 def build_provider(source: str) -> MarketDataProvider:
     source_key = source.strip().lower()
+    if source_key == "kis":
+        return KisMarketDataProvider()
+    if source_key == "hybrid":
+        return HybridMarketDataProvider()
+    if source_key == "defeatbeta":
+        return DefeatBetaResearchMarketDataProvider()
     if source_key == "yfinance":
         return YFinanceMarketDataProvider()
     return MockMarketDataProvider()
@@ -337,3 +345,190 @@ def _normalize_timestamp(value) -> datetime | None:
 
 def _default_currency(symbol: str) -> str:
     return "KRW" if symbol.endswith(".KS") else "USD"
+
+
+class KisMarketDataProvider(MarketDataProvider):
+    """Fetch current prices from Korea Investment Open API for KR and US presets."""
+
+    def __init__(self, env: str = "demo") -> None:
+        self.client = KisApiClient(env=env)
+        self.mock = MockMarketDataProvider()
+        self.env = env
+
+    def list_candidates(self, market: str) -> list[SecuritySnapshot]:
+        base_snapshots = self.mock.list_candidates(market)
+        enriched: list[SecuritySnapshot] = []
+        market_key = market.strip().lower()
+        for snapshot in base_snapshots:
+            try:
+                if market_key in {"국내", "kr", "korea"}:
+                    quote = self.client.domestic_price(snapshot.symbol.replace(".KS", ""))
+                    name = quote["name"] or snapshot.name
+                else:
+                    quote = self.client.overseas_price(snapshot.symbol, exchange_code=infer_overseas_exchange(snapshot.symbol)[:3])
+                    name = quote["name"] or snapshot.name
+                enriched.append(
+                    SecuritySnapshot(
+                        symbol=snapshot.symbol,
+                        name=name,
+                        market=snapshot.market,
+                        price=quote["price"] or snapshot.price,
+                        currency=snapshot.currency,
+                        captured_at=datetime.utcnow(),
+                        technicals=snapshot.technicals,
+                        fundamentals=snapshot.fundamentals,
+                        risk=snapshot.risk,
+                        notes=list(snapshot.notes) + [f"Provider: KIS Open API ({self.env})"],
+                    )
+                )
+            except Exception as exc:
+                snapshot.notes.append(f"KIS quote unavailable: {exc}")
+                enriched.append(snapshot)
+        return enriched
+
+
+class HybridMarketDataProvider(MarketDataProvider):
+    """Use yfinance coverage and enrich US symbols with defeatbeta research when possible."""
+
+    def __init__(self) -> None:
+        self.base_provider = YFinanceMarketDataProvider()
+        self.research_provider = DefeatBetaResearchMarketDataProvider(raise_on_init_error=False)
+
+    def list_candidates(self, market: str) -> list[SecuritySnapshot]:
+        snapshots = self.base_provider.list_candidates(market)
+        if self.research_provider.available and market.strip().lower() not in {"국내", "kr", "korea"}:
+            return self.research_provider.enrich_snapshots(snapshots)
+        return snapshots
+
+
+class DefeatBetaResearchMarketDataProvider(MarketDataProvider):
+    """Research-oriented provider backed by defeatbeta when dependencies are available."""
+
+    def __init__(self, raise_on_init_error: bool = True) -> None:
+        self.available = False
+        self.ticker_cls = None
+        self.fallback_provider = YFinanceMarketDataProvider()
+        try:
+            repo_root = Path(__file__).resolve().parent.parent / "defeatbeta-api"
+            if repo_root.exists():
+                sys.path.insert(0, str(repo_root))
+            from defeatbeta_api.data.ticker import Ticker  # type: ignore
+
+            self.ticker_cls = Ticker
+            self.available = True
+        except Exception:
+            if raise_on_init_error:
+                raise
+
+    def list_candidates(self, market: str) -> list[SecuritySnapshot]:
+        snapshots = self.fallback_provider.list_candidates(market)
+        if market.strip().lower() in {"국내", "kr", "korea"}:
+            for item in snapshots:
+                item.notes.append("Research provider is currently limited to US symbols.")
+            return snapshots
+        return self.enrich_snapshots(snapshots)
+
+    def enrich_snapshots(self, snapshots: list[SecuritySnapshot]) -> list[SecuritySnapshot]:
+        if not self.available or self.ticker_cls is None:
+            return snapshots
+
+        enriched: list[SecuritySnapshot] = []
+        for snapshot in snapshots:
+            if snapshot.symbol.endswith(".KS"):
+                enriched.append(snapshot)
+                continue
+            try:
+                research = self._load_research(snapshot.symbol)
+                notes = list(snapshot.notes) + research["notes"]
+                negative_flags = list(snapshot.risk.negative_news_flags) + research["negative_flags"]
+                enriched.append(
+                    SecuritySnapshot(
+                        symbol=snapshot.symbol,
+                        name=snapshot.name,
+                        market=snapshot.market,
+                        price=snapshot.price,
+                        currency=snapshot.currency,
+                        captured_at=snapshot.captured_at,
+                        technicals=snapshot.technicals,
+                        fundamentals=FundamentalIndicators(
+                            per=research["per"] or snapshot.fundamentals.per,
+                            pbr=research["pbr"] or snapshot.fundamentals.pbr,
+                            roe=research["roe"] or snapshot.fundamentals.roe,
+                            dividend_yield=snapshot.fundamentals.dividend_yield,
+                        ),
+                        risk=RiskSnapshot(
+                            volatility_30d=snapshot.risk.volatility_30d,
+                            delisting_risk=snapshot.risk.delisting_risk,
+                            short_interest_ratio=snapshot.risk.short_interest_ratio,
+                            negative_news_flags=negative_flags[:4],
+                        ),
+                        notes=notes[:5],
+                    )
+                )
+            except Exception as exc:
+                snapshot.notes.append(f"defeatbeta research unavailable: {exc}")
+                enriched.append(snapshot)
+        return enriched
+
+    def _load_research(self, symbol: str) -> dict:
+        ticker = self.ticker_cls(symbol)  # type: ignore[misc]
+        notes = ["Provider: defeatbeta research"]
+        negative_flags: list[str] = []
+        per = None
+        pbr = None
+        roe = None
+
+        try:
+            info_df = ticker.info()
+            if info_df is not None and not info_df.empty:
+                industry = info_df.iloc[0].get("industry")
+                sector = info_df.iloc[0].get("sector")
+                if industry:
+                    notes.append(f"Industry: {industry}")
+                if sector:
+                    notes.append(f"Sector: {sector}")
+        except Exception:
+            pass
+
+        try:
+            per_df = ticker.ttm_pe()
+            if not per_df.empty:
+                per = _safe_float(per_df.iloc[-1].get("ttm_pe"))
+        except Exception:
+            pass
+
+        try:
+            pbr_df = ticker.pb_ratio()
+            if not pbr_df.empty:
+                pbr = _safe_float(pbr_df.iloc[-1].get("pb_ratio"))
+        except Exception:
+            pass
+
+        try:
+            roe_df = ticker.roe()
+            if not roe_df.empty:
+                roe = _safe_float(roe_df.iloc[-1].get("roe"))
+        except Exception:
+            pass
+
+        try:
+            news_client = ticker.news()
+            news_df = news_client.get_news_list() if hasattr(news_client, "get_news_list") else None
+            if news_df is not None and not news_df.empty:
+                for _, row in news_df.head(2).iterrows():
+                    title = str(row.get("title") or row.get("headline") or "").strip()
+                    publisher = str(row.get("publisher") or row.get("source") or "").strip()
+                    if title:
+                        notes.append(f"News: {title[:80]}")
+                    if publisher:
+                        negative_flags.append(f"Recent coverage from {publisher}")
+        except Exception:
+            pass
+
+        return {
+            "per": per,
+            "pbr": pbr,
+            "roe": roe,
+            "notes": notes,
+            "negative_flags": negative_flags,
+        }
