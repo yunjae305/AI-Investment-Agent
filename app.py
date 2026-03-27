@@ -8,8 +8,8 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file
 
 from ai_invest_agent.analysis import build_recommendations
+from ai_invest_agent.document_export import export_report
 from ai_invest_agent.models import InvestmentRequest
-from ai_invest_agent.pdf_export import export_report_pdf
 from ai_invest_agent.providers import MockMarketDataProvider, resolve_provider
 from ai_invest_agent.reporting import attach_artifacts, build_report_context
 from ai_invest_agent.trading import build_trading_agent
@@ -60,6 +60,8 @@ def config_status():
         {
             "kis_demo_configured": _has_kis_credentials("demo"),
             "kis_real_configured": _has_kis_credentials("real"),
+            "pdf_export_provider": os.getenv("PDF_EXPORT_PROVIDER", "local"),
+            "cloudmersive_configured": bool(os.getenv("CLOUDMERSIVE_API_KEY")),
             "reports_dir": str(REPORTS_DIR),
         }
     )
@@ -172,7 +174,8 @@ def _run_analysis(form: dict, auto_execute: bool = False) -> dict:
 def _write_pdf_report(report_text: str) -> Path:
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
     output_path = REPORTS_DIR / f"investment_report_{timestamp}.pdf"
-    return export_report_pdf(report_text, output_path)
+    export_report(report_text, output_path)
+    return output_path
 
 
 def _collect_form(source) -> dict:

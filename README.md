@@ -32,6 +32,8 @@ KIS 모의투자 또는 실전투자를 쓰려면 루트에 `.env` 파일을 만
 - `KIS_ACCOUNT_NO`
 - `KIS_ACCOUNT_PRODUCT_CODE`
 - `KIS_USER_AGENT`
+- `PDF_EXPORT_PROVIDER`
+- `CLOUDMERSIVE_API_KEY`
 
 ## Run
 
@@ -50,6 +52,8 @@ http://127.0.0.1:5000
 ```text
 GET /api/config-status
 ```
+
+`PDF_EXPORT_PROVIDER=cloudmersive` 와 `CLOUDMERSIVE_API_KEY` 를 넣으면 외부 PDF 변환 API를 시도하고, 실패하면 로컬 PDF 생성으로 자동 fallback 합니다.
 
 ## API
 
