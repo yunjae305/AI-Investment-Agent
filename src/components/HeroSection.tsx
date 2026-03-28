@@ -10,16 +10,16 @@ const HeroSection = () => {
           <div className="space-y-8 animate-fade-in-up">
             <div className="inline-flex items-center gap-2 rounded-full bg-rose-light px-4 py-1.5 text-sm font-medium text-primary">
               <Zap className="w-4 h-4" />
-              AI 기반 자동 투자
+              SPKI 자동 투자
             </div>
             <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-charcoal leading-tight">
               스마트한 투자,
               <br />
-              <span className="text-primary">AI가 함께합니다</span>
+              <span className="text-primary">SPKI와 함께합니다</span>
             </h1>
             <p className="text-warm-gray text-lg max-w-lg leading-relaxed">
-              최첨단 AI 에이전트가 시장을 분석하고, 최적의 포트폴리오를 구성합니다. 
-              안전하고 똑똑한 투자를 경험하세요.
+              SPKI가 시장을 분석하고, 최적의 포트폴리오를 구성합니다. 
+              안전하고 똑똑한 자산 투자 관리를 경험하세요.
             </p>
             <div className="flex flex-wrap gap-4">
               <Button variant="hero" size="lg" className="text-base px-8 py-6 rounded-xl">
@@ -45,7 +45,7 @@ const HeroSection = () => {
               <div className="absolute inset-0 gradient-rose rounded-full opacity-20 blur-3xl scale-110" />
               <img 
                 src={mascot} 
-                alt="AI 투자 마스코트" 
+                alt="SPKI 마스코트" 
                 className="relative w-64 h-64 md:w-80 md:h-80 object-contain animate-float drop-shadow-xl"
               />
             </div>
