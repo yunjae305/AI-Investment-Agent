@@ -7,7 +7,7 @@ const Navbar = () => {
       <div className="container mx-auto px-6 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img src={mascot} alt="로고" className="w-8 h-8 object-contain" />
-          <span className="font-display text-xl font-bold text-charcoal">InvestAI</span>
+          <span className="font-display text-xl font-bold text-charcoal">SPKI</span>
         </div>
         <div className="hidden md:flex items-center gap-8">
           <a href="#" className="text-sm font-medium text-warm-gray hover:text-charcoal transition-colors">서비스</a>

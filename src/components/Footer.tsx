@@ -8,7 +8,7 @@ const Footer = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <img src={mascot} alt="로고" className="w-8 h-8 object-contain" />
-              <span className="font-display text-lg font-bold text-charcoal">InvestAI</span>
+              <span className="font-display text-lg font-bold text-charcoal">SPKI</span>
             </div>
             <p className="text-sm text-warm-gray leading-relaxed">
               AI 기반 자동 투자 플랫폼으로 더 스마트한 자산 관리를 경험하세요.
@@ -34,7 +34,7 @@ const Footer = () => {
           ))}
         </div>
         <div className="mt-12 pt-8 border-t border-border text-center text-sm text-warm-gray">
-          © 2026 InvestAI. All rights reserved.
+          © 2026 SPKI. All rights reserved.
         </div>
       </div>
     </footer>
