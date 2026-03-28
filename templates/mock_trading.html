@@ -1,0 +1,162 @@
+﻿<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>모의 매수/매도 현황</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Mock Trading Dashboard</p>
+          <h1>모의 매수/매도 현황</h1>
+          <p class="hero-text">주문 원장을 기준으로 최근 모의 거래 내역과 체결 진행률, 실시간 손익을 표시합니다.</p>
+        </div>
+        <div class="hero-card">
+          <p class="hero-card-label">Summary</p>
+          <p><strong>전체 주문:</strong> <span id="sum-total">{{ summary.total }}</span></p>
+          <p><strong>매수:</strong> <span id="sum-buy">{{ summary.buy_count }}</span></p>
+          <p><strong>매도:</strong> <span id="sum-sell">{{ summary.sell_count }}</span></p>
+          <p><strong>체결 완료:</strong> <span id="sum-filled">{{ summary.filled_count }}</span></p>
+          <p><strong>실시간 평가손익:</strong> <span id="sum-pnl" class="{% if summary.total_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">{{ summary.total_pnl }}</span></p>
+        </div>
+      </header>
+
+      <section class="panel table-panel">
+        <div class="section-heading">
+          <p class="section-kicker">Live</p>
+          <h2>주문 내역</h2>
+        </div>
+        <div style="margin-bottom: 14px; display: flex; gap: 10px; align-items: center;">
+          <button type="button" id="stop-auto-btn" class="secondary-button">자동매매 중지</button>
+          <span id="stop-status" class="summary-text"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>시간(UTC)</th>
+                <th>종목</th>
+                <th>액션</th>
+                <th>수량</th>
+                <th>상태</th>
+                <th>체결률</th>
+                <th>체결수량</th>
+                <th>잔량</th>
+                <th>체결가</th>
+                <th>현재가</th>
+                <th>손익</th>
+                <th>사유</th>
+              </tr>
+            </thead>
+            <tbody id="orders-body">
+              {% for order in orders %}
+              <tr>
+                <td>{{ order.created_at }}</td>
+                <td><strong>{{ order.symbol_name }}</strong><br><span>{{ order.symbol }}</span></td>
+                <td>{{ order.action }}</td>
+                <td>{{ order.quantity }}</td>
+                <td><span class="status-pill status-{{ order.status }}">{{ order.status }}</span></td>
+                <td>
+                  <div class="progress-wrap">
+                    <div class="progress-bar" style="width: {{ order.progress_pct }}%;"></div>
+                  </div>
+                  <small>{{ order.progress_pct }}%</small>
+                </td>
+                <td>{{ order.filled_quantity }}</td>
+                <td>{{ order.remaining_quantity }}</td>
+                <td>{{ order.fill_price }}</td>
+                <td>{{ order.mark_price }}</td>
+                <td class="{% if order.pnl_amount >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">{{ order.pnl_amount }}</td>
+                <td>{{ order.rationale }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      (function () {
+        const stopBtn = document.getElementById("stop-auto-btn");
+        const stopStatus = document.getElementById("stop-status");
+
+        if (stopBtn) {
+          stopBtn.addEventListener("click", async function () {
+            stopBtn.disabled = true;
+            if (stopStatus) stopStatus.textContent = "자동매매 중지 요청 중...";
+            try {
+              const res = await fetch("/api/auto-trading/stop", { method: "POST" });
+              const body = await res.json();
+              if (!res.ok || !body.ok) {
+                throw new Error(body.error || "자동매매 중지에 실패했습니다.");
+              }
+              if (stopStatus) stopStatus.textContent = "자동매매가 중지되었습니다.";
+            } catch (err) {
+              if (stopStatus) stopStatus.textContent = err && err.message ? err.message : "중지 중 오류가 발생했습니다.";
+              stopBtn.disabled = false;
+            }
+          });
+        }
+
+        async function refreshOrders() {
+          try {
+            const res = await fetch("/api/mock-trading/orders");
+            if (!res.ok) return;
+            const payload = await res.json();
+            const orders = payload.orders || [];
+            const summary = payload.summary || {};
+
+            document.getElementById("sum-total").textContent = summary.total || 0;
+            document.getElementById("sum-buy").textContent = summary.buy_count || 0;
+            document.getElementById("sum-sell").textContent = summary.sell_count || 0;
+            document.getElementById("sum-filled").textContent = summary.filled_count || 0;
+
+            const sumPnl = document.getElementById("sum-pnl");
+            const totalPnl = Number(summary.total_pnl || 0);
+            sumPnl.textContent = totalPnl.toFixed(2);
+            sumPnl.className = totalPnl >= 0 ? "pnl-positive" : "pnl-negative";
+
+            const body = document.getElementById("orders-body");
+            body.innerHTML = "";
+
+            for (const order of orders) {
+              const tr = document.createElement("tr");
+              const pnl = Number(order.pnl_amount || 0);
+              tr.innerHTML = `
+                <td>${order.created_at || ""}</td>
+                <td><strong>${order.symbol_name || order.symbol || ""}</strong><br><span>${order.symbol || ""}</span></td>
+                <td>${order.action || ""}</td>
+                <td>${order.quantity || 0}</td>
+                <td><span class="status-pill status-${order.status || "queued"}">${order.status || ""}</span></td>
+                <td>
+                  <div class="progress-wrap">
+                    <div class="progress-bar" style="width: ${order.progress_pct || 0}%;"></div>
+                  </div>
+                  <small>${order.progress_pct || 0}%</small>
+                </td>
+                <td>${order.filled_quantity ?? 0}</td>
+                <td>${order.remaining_quantity ?? 0}</td>
+                <td>${order.fill_price ?? ""}</td>
+                <td>${order.mark_price ?? ""}</td>
+                <td class="${pnl >= 0 ? "pnl-positive" : "pnl-negative"}">${pnl.toFixed(2)}</td>
+                <td>${order.rationale || ""}</td>
+              `;
+              body.appendChild(tr);
+            }
+          } catch (e) {
+            // polling keep-alive
+          }
+        }
+
+        setInterval(refreshOrders, 1000);
+      })();
+    </script>
+  </body>
+</html>

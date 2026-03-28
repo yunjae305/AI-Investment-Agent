@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -13,13 +14,86 @@ FONT_SIZE = 10
 LEADING = 14
 MAX_COLUMNS = 54
 LINES_PER_PAGE = int((PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN) / LEADING)
+REPORTLAB_FONT_NAME = "KoreanFont"
+
+
+def _candidate_font_paths() -> list[Path]:
+    env_font = os.getenv("PDF_FONT_PATH", "").strip()
+    candidates = [
+        env_font,
+        r"C:\Windows\Fonts\malgun.ttf",
+        r"C:\Windows\Fonts\malgunbd.ttf",
+        r"C:\Windows\Fonts\NanumGothic.ttf",
+        r"C:\Windows\Fonts\NotoSansCJKkr-Regular.otf",
+    ]
+    return [Path(path) for path in candidates if path]
+
+
+def _find_available_font_path() -> Path | None:
+    for path in _candidate_font_paths():
+        if path.exists():
+            return path
+    return None
 
 
 def export_report_pdf(report_text: str, output_path: Path, title: str = "Investment Report") -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    reportlab_ok = _export_report_pdf_reportlab(report_text=report_text, output_path=output_path, title=title)
+    if reportlab_ok:
+        return output_path
     pages = _paginate(_normalize_text(report_text).splitlines())
     output_path.write_bytes(_build_pdf_bytes(title=title, pages=pages))
     return output_path
+
+
+def _export_report_pdf_reportlab(report_text: str, output_path: Path, title: str) -> bool:
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.pdfgen import canvas
+    except Exception:
+        return False
+
+    font_name: str | None = None
+    font_path = _find_available_font_path()
+    if font_path is not None:
+        try:
+            pdfmetrics.registerFont(TTFont(REPORTLAB_FONT_NAME, str(font_path)))
+            font_name = REPORTLAB_FONT_NAME
+        except Exception:
+            font_name = None
+    if font_name is None:
+        for cid_name in ("HYSMyeongJo-Medium", "HYGothic-Medium"):
+            try:
+                if cid_name not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(UnicodeCIDFont(cid_name))
+                font_name = cid_name
+                break
+            except Exception:
+                continue
+    if font_name is None:
+        return False
+
+    try:
+        pdf = canvas.Canvas(str(output_path), pagesize=letter)
+        width, height = letter
+        pdf.setTitle(title)
+        pdf.setFont(font_name, 10)
+
+        y = height - TOP_MARGIN
+        for raw_line in _normalize_text(report_text).splitlines():
+            if y < BOTTOM_MARGIN:
+                pdf.showPage()
+                pdf.setFont(font_name, 10)
+                y = height - TOP_MARGIN
+            pdf.drawString(LEFT_MARGIN, y, raw_line)
+            y -= LEADING
+        pdf.save()
+        return True
+    except Exception:
+        return False
 
 
 def _normalize_text(text: str) -> str:

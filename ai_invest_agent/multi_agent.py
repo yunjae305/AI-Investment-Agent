@@ -247,6 +247,7 @@ def _build_research_agent(
                 name=item.name,
                 facts=facts,
                 negative_news_flags=flags,
+                sources=[],
             )
         )
         plan_payloads.append(
@@ -261,9 +262,10 @@ def _build_research_agent(
         )
 
     prompt = (
-        "너는 전문 리서치 어시스턴트야. 제공된 키워드를 바탕으로 {market} 시장의 최신 뉴스, 공시, Analyst 리포트 "
-        "요약본을 수집해줘. 특히 최근 30일간의 변동성 이슈나 부정적 뉴스 플래그(negative_news_flags)가 있는지 "
-        "집중적으로 파악해서 사실 기반의 데이터를 정리해줘. 주관적인 의견은 배제하고 오직 팩트만 전달해.\n\n"
+        "너는 전문 리서치 어시스턴트야. 제공된 키워드를 바탕으로 {market} 시장의 최신 뉴스, 공시, 증권사 리포트, "
+        "어닝콜/실적 발표 문서를 우선 수집해줘. MCP 도구가 있으면 반드시 활용하고, 각 종목별로 출처 URL을 2개 이상 확보해. "
+        "특히 최근 30일간의 변동성 이슈나 부정적 뉴스 플래그(negative_news_flags)가 있는지 집중 파악해서 "
+        "사실 기반 데이터만 정리해. 출력 JSON에는 sources 배열(문자열 URL 목록)을 반드시 포함해.\n\n"
         "리서치 계획:\n{plan}"
     ).format(
         market=request.market,
@@ -282,6 +284,7 @@ def _build_research_agent(
                 name=_coerce_str(raw, "name", fallback.name),
                 facts=_coerce_list(raw, "facts", fallback.facts),
                 negative_news_flags=_coerce_list(raw, "negative_news_flags", fallback.negative_news_flags),
+                sources=_coerce_list(raw, "sources", fallback.sources)[:5],
                 source="llm",
             )
         )
@@ -326,6 +329,7 @@ def _build_insight_agent(
                 "recommendation_reason": item.reason,
                 "research_facts": finding.facts,
                 "negative_news_flags": finding.negative_news_flags,
+                "sources": finding.sources,
             }
         )
 
@@ -604,9 +608,54 @@ def _call_text_agent(
             },
         ],
     }
+    mcp_tools, _, _ = _resolve_mcp_tools()
+    tool_choice = _resolve_mcp_tool_choice()
+    if mcp_tools:
+        payload["tools"] = mcp_tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
     if response_format is not None:
         payload["text"] = {"format": response_format}
 
+    body = _post_responses(payload, api_key)
+    if body is None and mcp_tools:
+        fallback_payload = dict(payload)
+        fallback_payload.pop("tools", None)
+        fallback_payload.pop("tool_choice", None)
+        body = _post_responses(fallback_payload, api_key)
+    if body is None:
+        return ""
+
+    output_text = body.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+
+    for item in body.get("output", []):
+        for content in item.get("content", []):
+            text = content.get("text")
+            if isinstance(text, str):
+                return text
+    return ""
+
+
+def get_mcp_config_status() -> dict[str, Any]:
+    tools, source, parse_error = _resolve_mcp_tools()
+    labels: list[str] = []
+    for item in tools:
+        label = item.get("server_label")
+        if isinstance(label, str) and label.strip():
+            labels.append(label.strip())
+    return {
+        "enabled": bool(tools),
+        "source": source,
+        "tool_count": len(tools),
+        "server_labels": labels,
+        "tool_choice": _resolve_mcp_tool_choice(),
+        "parse_error": parse_error,
+    }
+
+
+def _post_responses(payload: dict[str, Any], api_key: str) -> dict[str, Any] | None:
     try:
         response = requests.post(
             OPENAI_RESPONSES_URL,
@@ -619,19 +668,92 @@ def _call_text_agent(
         )
         response.raise_for_status()
     except requests.RequestException:
-        return ""
-
+        return None
     body = response.json()
-    output_text = body.get("output_text")
-    if isinstance(output_text, str):
-        return output_text
+    return body if isinstance(body, dict) else None
 
-    for item in body.get("output", []):
-        for content in item.get("content", []):
-            text = content.get("text")
-            if isinstance(text, str):
-                return text
-    return ""
+
+def _resolve_mcp_tools() -> tuple[list[dict[str, Any]], str | None, bool]:
+    tools_text = os.getenv("AI_MCP_TOOLS_JSON", "").strip()
+    if tools_text:
+        try:
+            parsed = json.loads(tools_text)
+        except json.JSONDecodeError:
+            return [], "AI_MCP_TOOLS_JSON", True
+        if isinstance(parsed, list):
+            tools = [item for item in parsed if isinstance(item, dict)]
+            return tools, "AI_MCP_TOOLS_JSON", False
+        return [], "AI_MCP_TOOLS_JSON", True
+
+    servers_text = os.getenv("AI_MCP_SERVERS_JSON", "").strip()
+    if servers_text:
+        try:
+            parsed = json.loads(servers_text)
+        except json.JSONDecodeError:
+            return [], "AI_MCP_SERVERS_JSON", True
+        if not isinstance(parsed, list):
+            return [], "AI_MCP_SERVERS_JSON", True
+        return _build_mcp_tools(parsed), "AI_MCP_SERVERS_JSON", False
+
+    file_path = os.getenv("AI_MCP_SERVERS_FILE", "").strip() or "mcp_servers.json"
+    try:
+        text = open(file_path, "r", encoding="utf-8").read().strip()
+    except OSError:
+        return [], None, False
+    if not text:
+        return [], "AI_MCP_SERVERS_FILE", False
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return [], "AI_MCP_SERVERS_FILE", True
+    if not isinstance(parsed, list):
+        return [], "AI_MCP_SERVERS_FILE", True
+    return _build_mcp_tools(parsed), "AI_MCP_SERVERS_FILE", False
+
+
+def _build_mcp_tools(parsed: list[Any]) -> list[dict[str, Any]]:
+    tools: list[dict[str, Any]] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        server_url = item.get("server_url")
+        server_label = item.get("server_label")
+        if not isinstance(server_url, str) or not server_url.strip():
+            continue
+        if not isinstance(server_label, str) or not server_label.strip():
+            continue
+        tool: dict[str, Any] = {
+            "type": "mcp",
+            "server_url": server_url.strip(),
+            "server_label": server_label.strip(),
+        }
+        authorization = item.get("authorization")
+        if isinstance(authorization, str) and authorization.strip():
+            tool["authorization"] = authorization.strip()
+        headers = item.get("headers")
+        if isinstance(headers, dict):
+            tool["headers"] = headers
+        allowed_tools = item.get("allowed_tools")
+        if isinstance(allowed_tools, list):
+            cleaned = [tool_name for tool_name in allowed_tools if isinstance(tool_name, str) and tool_name.strip()]
+            if cleaned:
+                tool["allowed_tools"] = cleaned
+        tools.append(tool)
+    return tools
+
+
+def _resolve_mcp_tool_choice() -> Any:
+    raw = os.getenv("AI_MCP_TOOL_CHOICE", "").strip()
+    if not raw:
+        return None
+    lowered = raw.lower()
+    if lowered in {"none", "auto", "required"}:
+        return lowered
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _agent_model(agent_name: str) -> str:

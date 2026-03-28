@@ -41,6 +41,7 @@ class MockTradingAgent:
         self.ledger_dir = ledger_dir or (base_dir / "mock_trading")
         self.ledger_dir.mkdir(parents=True, exist_ok=True)
         self.ledger_file = self.ledger_dir / "orders.jsonl"
+        self.auto_state_file = self.ledger_dir / "auto_trader_state.json"
 
     def execute_recommendations(
         self,
@@ -48,12 +49,14 @@ class MockTradingAgent:
         max_orders: int = 3,
     ) -> dict:
         recommendation_list = list(recommendations)
+        self._reset_session_state(recommendation_list)
         executed: list[dict] = []
         skipped: list[dict] = []
         executed_symbols: set[str] = set()
 
         for item in recommendation_list:
-            if item.signal_action != "BUY":
+            action = item.signal_action.strip().upper()
+            if action not in {"BUY", "SELL"}:
                 skipped.append({"symbol": item.symbol, "reason": f"signal={item.signal_action}"})
                 continue
             if item.quantity <= 0:
@@ -65,7 +68,7 @@ class MockTradingAgent:
 
             order = PaperTradeOrder(
                 symbol=item.symbol,
-                action=item.signal_action,
+                action=action,
                 quantity=item.quantity,
                 entry_price=item.entry_price,
                 target_price=item.target_price,
@@ -91,6 +94,23 @@ class MockTradingAgent:
     def _append_order(self, order: dict) -> None:
         with self.ledger_file.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(order, ensure_ascii=False) + "\n")
+
+    def _reset_session_state(self, recommendations: list[RecommendationLike]) -> None:
+        if self.ledger_file.exists():
+            self.ledger_file.unlink()
+        watch_symbols: list[str] = []
+        for item in recommendations:
+            symbol = item.symbol.strip()
+            if symbol and symbol not in watch_symbols:
+                watch_symbols.append(symbol)
+        state = {
+            "enabled": False,
+            "last_generated_at": None,
+            "sequence": 0,
+            "holdings": {},
+            "watch_symbols": watch_symbols,
+        }
+        self.auto_state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 class KisTradingAgent:
@@ -118,7 +138,8 @@ class KisTradingAgent:
         skipped: list[dict] = []
 
         for item in recommendation_list:
-            if item.signal_action != "BUY":
+            action = item.signal_action.strip().upper()
+            if action not in {"BUY", "SELL"}:
                 skipped.append({"symbol": item.symbol, "reason": f"signal={item.signal_action}"})
                 continue
             if item.quantity <= 0:
@@ -131,10 +152,10 @@ class KisTradingAgent:
                 skipped.append({"symbol": item.symbol, "reason": "entry_price_missing"})
                 continue
 
-            order_result = self._submit_order(item)
+            order_result = self._submit_order(item, action=action)
             serialized = {
                 "symbol": item.symbol,
-                "action": item.signal_action,
+                "action": action,
                 "quantity": item.quantity,
                 "entry_price": item.entry_price,
                 "target_price": item.target_price,
@@ -157,17 +178,18 @@ class KisTradingAgent:
             "executed_symbols": sorted([item["symbol"] for item in executed]),
         }
 
-    def _submit_order(self, item: RecommendationLike) -> dict:
+    def _submit_order(self, item: RecommendationLike, action: str) -> dict:
+        side = action.lower()
         if item.symbol.endswith(".KS"):
             return self.client.order_domestic(
                 symbol=item.symbol.replace(".KS", ""),
-                side="buy",
+                side=side,
                 quantity=item.quantity,
                 price=item.entry_price or 0.0,
             )
         return self.client.order_overseas(
             symbol=item.symbol,
-            side="buy",
+            side=side,
             quantity=item.quantity,
             price=item.entry_price or 0.0,
             exchange_code=infer_overseas_exchange(item.symbol),

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -13,16 +13,17 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Hybrid Research + Paper Trading</p>
-          <h1>한미 주식 분석, PDF 리포트, 모의매매 실행</h1>
+          <p class="eyebrow">Mock Data + Paper Trading</p>
+          <h1>모의 데이터 기반 AI 투자 대시보드</h1>
           <p class="hero-text">
-            국내와 미국 주식을 함께 분석하고, 추천 결과를 PDF로 저장하며, 조건에 따라 로컬 모의매매 에이전트가 주문을 기록합니다.
+            실제 시세 API 없이 모의 데이터를 사용합니다. 분석 결과를 확인한 뒤 투자 시작 버튼을 누르면
+            자동 주문이 실행되고, 실시간 모의 매수/매도 현황 페이지가 열립니다.
           </p>
         </div>
         <div class="hero-card">
-          <p class="hero-card-label">Current source</p>
-          <strong>{% if result %}{{ result.data_source_label }}{% else %}Hybrid Research{% endif %}</strong>
-          <p>기본값은 하이브리드 공급자이며, 실시간성은 Yahoo Finance 계열, 심화 연구는 DefeatBeta 연동을 시도합니다.</p>
+          <p class="hero-card-label">Current Source</p>
+          <strong>Mock Data Only</strong>
+          <p>Yahoo Finance, DefeatBeta, 실거래 API는 사용하지 않습니다.</p>
         </div>
       </header>
 
@@ -32,22 +33,17 @@
             <p class="section-kicker">Input</p>
             <h2>투자 조건</h2>
           </div>
+
           {% if error %}
           <div class="error-banner">{{ error }}</div>
           {% endif %}
+
           <form action="{{ url_for('analyze') }}" method="post" class="input-form">
             <label>
-              <span>자산</span>
+              <span>자산 (KRW)</span>
               <input type="text" name="asset" value="{{ form.asset }}" placeholder="10000000">
             </label>
-            <label>
-              <span>데이터 소스</span>
-              <select name="data_source">
-                {% for option in [("hybrid", "Hybrid"), ("kis", "KIS Open API"), ("yfinance", "Yahoo Finance"), ("defeatbeta", "DefeatBeta Research"), ("mock", "Mock Data")] %}
-                <option value="{{ option[0] }}" {% if form.data_source == option[0] %}selected{% endif %}>{{ option[1] }}</option>
-                {% endfor %}
-              </select>
-            </label>
+
             <label>
               <span>투자 성향</span>
               <select name="propensity">
@@ -56,6 +52,7 @@
                 {% endfor %}
               </select>
             </label>
+
             <label>
               <span>시장</span>
               <select name="market">
@@ -64,44 +61,26 @@
                 {% endfor %}
               </select>
             </label>
+
             <label>
-              <span>기간</span>
+              <span>투자 기간</span>
               <select name="duration">
                 {% for option in ["단기", "중기", "장기"] %}
                 <option value="{{ option }}" {% if form.duration == option %}selected{% endif %}>{{ option }}</option>
                 {% endfor %}
               </select>
             </label>
-            <label>
-              <span>자동 모의매매</span>
-              <select name="auto_execute">
-                <option value="" {% if form.auto_execute != "on" %}selected{% endif %}>끄기</option>
-                <option value="on" {% if form.auto_execute == "on" %}selected{% endif %}>켜기</option>
-              </select>
-            </label>
-            <label>
-              <span>실행 브로커</span>
-              <select name="execution_broker">
-                {% for option in [("auto", "Auto"), ("kis", "KIS Open API"), ("mock", "Mock Broker")] %}
-                <option value="{{ option[0] }}" {% if form.execution_broker == option[0] %}selected{% endif %}>{{ option[1] }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>
-              <span>실행 환경</span>
-              <select name="execution_env">
-                {% for option in [("demo", "Demo"), ("real", "Real")] %}
-                <option value="{{ option[0] }}" {% if form.execution_env == option[0] %}selected{% endif %}>{{ option[1] }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <button type="submit">분석 실행</button>
+
+            <input type="hidden" name="data_source" value="mock">
+            <input type="hidden" name="trading_mode" value="mock">
+
+            {% if result and result.signals %}
+            <button type="button" id="start-invest-btn">투자 시작</button>
+            <p id="trade-status" class="summary-text"></p>
+            {% else %}
+            <button type="submit">분석 시작</button>
+            {% endif %}
           </form>
-          <div class="api-hint">
-            <strong>API</strong>
-            <code>POST /api/analyze</code>
-            <code>POST /api/execute</code>
-          </div>
         </section>
 
         <section class="results">
@@ -109,7 +88,7 @@
           <section class="panel summary-panel">
             <div class="section-heading">
               <p class="section-kicker">#1</p>
-              <h2>투자 전략 요약</h2>
+              <h2>분석 요약</h2>
             </div>
             <div class="summary-meta">
               <span>{{ result.request.asset_label }}</span>
@@ -123,37 +102,6 @@
             {% if result.pdf_report %}
             <p class="summary-text"><a href="{{ url_for('download_report', filename=result.pdf_report.file_name) }}">PDF 다운로드</a></p>
             {% endif %}
-            {% if result.provider_warning %}
-            <div class="error-banner">{{ result.provider_warning }}</div>
-            {% endif %}
-            {% if result.execution_result %}
-            <div class="api-hint">
-              <strong>Paper trading</strong>
-              <p>{{ result.execution_result.executed_count }}건 주문이 {{ result.execution_result.broker }}로 기록되었습니다.</p>
-              {% if result.execution_result.environment %}
-              <p>Environment: {{ result.execution_result.environment }}</p>
-              {% endif %}
-            </div>
-            {% endif %}
-            <ul class="guidance-list">
-              {% for item in result.guidance %}
-              <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          </section>
-
-          <section class="panel">
-            <div class="section-heading">
-              <p class="section-kicker">Persona</p>
-              <h2>Investor Persona</h2>
-            </div>
-            <p class="summary-text">{{ result.persona.summary }}</p>
-            <ul class="guidance-list">
-              <li>Risk tolerance: {{ result.persona.risk_tolerance }}</li>
-              <li>Sector interests: {{ result.persona.sector_interests | join(", ") }}</li>
-              <li>Decision values: {{ result.persona.decision_values | join(", ") }}</li>
-              <li>Source: {{ result.persona.source }}</li>
-            </ul>
           </section>
 
           <section class="panel table-panel">
@@ -167,7 +115,7 @@
                   <tr>
                     <th>종목</th>
                     <th>현재가</th>
-                    <th>추천 사유</th>
+                    <th>추천 이유</th>
                     <th>핵심 지표</th>
                     <th>위험도</th>
                   </tr>
@@ -190,70 +138,61 @@
             </div>
           </section>
 
-          <section class="grid-two">
-            <section class="panel">
-              <div class="section-heading">
-                <p class="section-kicker">#3</p>
-                <h2>매매 가이드</h2>
-              </div>
-              <div class="action-cards">
-                {% for row in result.rows %}
-                <article class="action-card">
-                  <div class="card-topline">
-                    <strong>{{ row.name }}</strong>
-                    <span>{{ row.symbol }}</span>
-                  </div>
-                  <dl>
-                    <div>
-                      <dt>진입가</dt>
-                      <dd>{{ row.entry_price }}</dd>
-                    </div>
-                    <div>
-                      <dt>목표가</dt>
-                      <dd>{{ row.target_price }}</dd>
-                    </div>
-                    <div>
-                      <dt>기대 수익률</dt>
-                      <dd>{{ row.expected_return_pct }}</dd>
-                    </div>
-                    <div>
-                      <dt>손절가</dt>
-                      <dd>{{ row.stop_loss_price }}</dd>
-                    </div>
-                  </dl>
-                </article>
-                {% endfor %}
-              </div>
-            </section>
+          <section class="panel">
+            <div class="section-heading">
+              <p class="section-kicker">#3</p>
+              <h2>재무 지표 그래프</h2>
+            </div>
+            <div class="chart-grid">
+              {% for chart in result.metric_charts %}
+              <article class="chart-card">
+                <h3>{{ chart.title }}</h3>
+                {{ chart.svg | safe }}
+              </article>
+              {% endfor %}
+            </div>
+          </section>
 
-            <section class="panel">
-              <div class="section-heading">
-                <p class="section-kicker">#4</p>
-                <h2>리스크</h2>
-              </div>
-              <div class="risk-cards">
-                {% for card in result.risk_cards %}
-                <article class="risk-card">
-                  <div class="card-topline">
-                    <strong>{{ card.name }}</strong>
-                    <span>{{ card.symbol }}</span>
-                  </div>
-                  <ul>
-                    {% for warning in card.warnings %}
-                    <li>{{ warning }}</li>
-                    {% endfor %}
-                  </ul>
-                  <p class="data-note">{{ card.data_note }}</p>
-                </article>
-                {% endfor %}
-              </div>
-            </section>
+          <section class="panel table-panel">
+            <div class="section-heading">
+              <p class="section-kicker">#4</p>
+              <h2>재무 지표 비교 표</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>종목</th>
+                    <th>EPS</th>
+                    <th>PER</th>
+                    <th>ROE</th>
+                    <th>BPS</th>
+                    <th>PBR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in result.rows %}
+                  <tr>
+                    <td>
+                      <strong>{{ row.name }}</strong>
+                      <span>{{ row.symbol }}</span>
+                    </td>
+                    <td>{{ row.financial_metrics.eps }}</td>
+                    <td>{{ row.financial_metrics.per }}</td>
+                    <td>{{ row.financial_metrics.roe }}</td>
+                    <td>{{ row.financial_metrics.bps }}</td>
+                    <td>{{ row.financial_metrics.pbr }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="panel">
             <div class="section-heading">
               <p class="section-kicker">#5</p>
-              <h2>자동 실행 payload</h2>
+              <h2>자동 실행 Payload</h2>
             </div>
             <div class="signal-grid">
               {% for signal in result.signals %}
@@ -267,26 +206,62 @@
               {% endfor %}
             </div>
           </section>
-
-          <section class="panel disclaimer-panel">
-            <p>{{ result.disclaimer }}</p>
-            <p>Verification passed: {{ result.multi_agent.verification.passed }}</p>
-            {% for issue in result.multi_agent.verification.issues %}
-            <p>Verification issue: {{ issue }}</p>
-            {% endfor %}
-            {% if result.execution_result %}
-            <p>Ledger: {{ result.execution_result.ledger_file }}</p>
-            {% endif %}
-          </section>
           {% else %}
           <section class="panel empty-state">
             <p class="section-kicker">Ready</p>
             <h2>조건을 입력하면 분석 결과가 표시됩니다.</h2>
-            <p>기본값은 하이브리드 연구 공급자이며, 실패 시 mock 데이터로 안전하게 대체됩니다.</p>
           </section>
           {% endif %}
         </section>
       </main>
     </div>
+
+    {% if result and result.signals %}
+    <script>
+      (function () {
+        const btn = document.getElementById("start-invest-btn");
+        const status = document.getElementById("trade-status");
+        if (!btn || !status) return;
+
+        const rawSignals = {{ result.signals | map(attribute="pretty_json") | list | tojson }};
+
+        function decodeSignals(rawList) {
+          const parsedSignals = [];
+          for (const raw of rawList || []) {
+            try {
+              const item = JSON.parse(raw);
+              if (item && typeof item === "object") parsedSignals.push(item);
+            } catch (error) {
+              // ignore malformed payload
+            }
+          }
+          return parsedSignals;
+        }
+
+        btn.addEventListener("click", async function () {
+          btn.disabled = true;
+          status.textContent = "모의투자를 시작하는 중입니다...";
+
+          try {
+            const response = await fetch("/api/execute", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ signals: decodeSignals(rawSignals), trading_mode: "mock" })
+            });
+            const body = await response.json();
+            if (!response.ok) {
+              throw new Error(body.error || "모의투자 실행에 실패했습니다.");
+            }
+            status.textContent = `실행 완료: ${body.executed_count || 0}건`;
+            window.open("/mock-trading", "_blank");
+          } catch (error) {
+            status.textContent = error && error.message ? error.message : "모의투자 실행 중 오류가 발생했습니다.";
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      })();
+    </script>
+    {% endif %}
   </body>
 </html>

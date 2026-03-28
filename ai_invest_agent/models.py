@@ -107,6 +107,7 @@ class ResearchFinding:
     name: str
     facts: List[str]
     negative_news_flags: List[str]
+    sources: List[str] = field(default_factory=list)
     source: str = "rule-based"
 
 

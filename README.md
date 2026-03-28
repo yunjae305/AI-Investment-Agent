@@ -73,6 +73,7 @@ GET /api/config-status
 생성 파일:
 
 - PDF 리포트: `generated_reports/`
+- 리서치 아카이브(JSONL): `collected_reports/research_findings.jsonl`
 - mock 주문 ledger: `mock_trading/`
 - KIS 주문 ledger: `kis_trading/`
 
@@ -231,14 +232,36 @@ PDF 관련:
 - `AI_INSIGHT_MODEL`
 - `AI_WRITING_MODEL`
 - `AI_VERIFICATION_MODEL`
+- `AI_MCP_SERVERS_JSON`
+- `AI_MCP_SERVERS_FILE`
+- `AI_MCP_TOOLS_JSON`
+- `AI_MCP_TOOL_CHOICE`
 
 기본 모델은 `gpt-4.1-mini` 입니다.
+
+MCP 연결 예시:
+
+```json
+[
+  {
+    "server_label": "news",
+    "server_url": "https://example-mcp-server.com/mcp",
+    "authorization": "Bearer YOUR_TOKEN",
+    "allowed_tools": ["search_news", "fetch_article"]
+  }
+]
+```
+
+위 JSON을 문자열로 직렬화해 `AI_MCP_SERVERS_JSON`에 넣으면 Responses API 호출 시 MCP 도구가 함께 전달됩니다.
+파일 방식으로는 `AI_MCP_SERVERS_FILE`(기본값 `mcp_servers.json`)을 사용할 수 있고, 샘플은 `mcp_servers.example.json`입니다.
+적용 우선순위는 `AI_MCP_TOOLS_JSON` > `AI_MCP_SERVERS_JSON` > `AI_MCP_SERVERS_FILE` 입니다.
 
 ## LLM Behavior
 
 - `OPENAI_API_KEY`가 설정되어 있으면 각 에이전트가 OpenAI Responses API를 사용합니다.
 - 기본 모델은 `gpt-4.1-mini` 입니다.
 - 각 단계는 개별 모델로 override 할 수 있습니다.
+- `AI_MCP_SERVERS_JSON` 또는 `AI_MCP_TOOLS_JSON`을 설정하면 Research Agent가 MCP 도구를 사용해 증권사 리포트/공시/뉴스 출처를 수집합니다.
 - API 키가 없거나 호출 실패 시 deterministic rule-based fallback으로 동작합니다.
 
 ## API
@@ -262,6 +285,8 @@ PDF 관련:
 }
 ```
 
+응답에는 기존 분석 결과와 함께 `multi_agent`(구조화 결과), `multi_agent_report`(마크다운)가 포함됩니다.
+
 ### Execute
 
 `POST /api/execute`
@@ -284,8 +309,31 @@ PDF 관련:
 }
 ```
 
+### Config Status
+
+`GET /api/config-status`
+
+응답에는 OpenAI 설정 여부, 기본 모델, MCP 활성화/도구 개수/라벨, PDF/KIS 설정 준비 상태가 포함됩니다.
+
+### Research Archive
+
+`GET /api/research-archive?limit=200`
+
+분석 실행 시마다 수집된 뉴스/리포트 기반 리서치 결과를 최신순으로 조회합니다.
+
 ## Notes
 
 - `Cloudmersive` 경로를 사용하면 HTML 기반 PDF 변환이 가능해서 그래프가 포함된 PDF 품질이 더 좋습니다.
 - 로컬 fallback PDF는 텍스트 기반이라 그래프 표현에는 한계가 있습니다.
 - 현재 일부 한글 문자열은 기존 코드 인코딩 문제의 영향을 일부 받을 수 있습니다. 필요하면 후속 작업으로 전역 정리 가능합니다.
+
+## PDF Korean Font
+
+- Local PDF generation now tries `reportlab` + a Korean TTF/OTF first.
+- Default font search order:
+  - `PDF_FONT_PATH` (if set)
+  - `C:\Windows\Fonts\malgun.ttf`
+  - `C:\Windows\Fonts\malgunbd.ttf`
+  - `C:\Windows\Fonts\NanumGothic.ttf`
+  - `C:\Windows\Fonts\NotoSansCJKkr-Regular.otf`
+- If all fail, it falls back to the legacy local PDF writer.

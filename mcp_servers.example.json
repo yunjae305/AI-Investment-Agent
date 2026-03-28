@@ -1,0 +1,14 @@
+[
+  {
+    "server_label": "news",
+    "server_url": "https://example-mcp-server.com/mcp",
+    "authorization": "Bearer YOUR_TOKEN",
+    "allowed_tools": ["search_news", "fetch_article"]
+  },
+  {
+    "server_label": "sec_filings",
+    "server_url": "https://example-sec-mcp.com/mcp",
+    "authorization": "Bearer YOUR_TOKEN",
+    "allowed_tools": ["search_filings", "get_filing_summary"]
+  }
+]
