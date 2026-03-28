@@ -75,6 +75,56 @@ class KisApiClient:
             "raw": output,
         }
 
+    def inquire_daily_price(self, symbol: str, count: int = 60) -> list[dict]:
+        """일봉 데이터 조회 (최신순, count개)"""
+        data = self._get(
+            "/uapi/domestic-stock/v1/quotations/inquire-daily-price",
+            tr_id="FHKST01010400",
+            params={
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": symbol,
+                "FID_PERIOD_DIV_CODE": "D",
+                "FID_ORG_ADJ_PRC": "0",
+            },
+        )
+        outputs = data.get("output2") or data.get("output") or []
+        result = []
+        for item in outputs[:count]:
+            close = _to_float(item.get("stck_clpr"))
+            if close is None:
+                continue
+            result.append({
+                "date": item.get("stck_bsop_date"),
+                "close": close,
+                "open": _to_float(item.get("stck_oprc")),
+                "high": _to_float(item.get("stck_hgpr")),
+                "low": _to_float(item.get("stck_lwpr")),
+                "volume": _to_float(item.get("acml_vol")),
+            })
+        return result
+
+    def financial_ratio(self, symbol: str) -> dict:
+        """재무비율 조회 (PER, PBR, ROE, EPS, BPS, 배당수익률) — 연간 기준"""
+        data = self._get(
+            "/uapi/domestic-stock/v1/finance/financial-ratio",
+            tr_id="FHPST01720200",
+            params={
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": symbol,
+                "FID_DIV_CLS_CODE": "0",
+            },
+        )
+        outputs = data.get("output") or []
+        item = outputs[0] if isinstance(outputs, list) and outputs else (outputs if isinstance(outputs, dict) else {})
+        return {
+            "per": _to_float(item.get("per")),
+            "pbr": _to_float(item.get("pbr")),
+            "eps": _to_float(item.get("eps")),
+            "bps": _to_float(item.get("bps")),
+            "roe": _to_float(item.get("roe")),
+            "dividend_yield": _to_float(item.get("dvt_rate")),
+        }
+
     def order_domestic(
         self,
         symbol: str,

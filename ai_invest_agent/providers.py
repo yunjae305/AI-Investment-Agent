@@ -1,8 +1,10 @@
 ﻿from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from datetime import datetime
 
+from ai_invest_agent.kis_adapter import KisApiClient
 from ai_invest_agent.models import (
     FundamentalIndicators,
     RiskSnapshot,
@@ -109,11 +111,175 @@ class MockMarketDataProvider(MarketDataProvider):
         ]
 
 
+class KisMarketDataProvider(MarketDataProvider):
+    """KIS OpenAPI 실시간 데이터 제공자"""
+
+    KR_CANDIDATES: list[tuple[str, str]] = [
+        ("005930", "삼성전자"),
+        ("000660", "SK하이닉스"),
+        ("035420", "NAVER"),
+        ("005380", "현대자동차"),
+        ("000270", "기아"),
+        ("051910", "LG화학"),
+        ("006400", "삼성SDI"),
+        ("035720", "카카오"),
+        ("068270", "셀트리온"),
+        ("105560", "KB금융"),
+        ("055550", "신한지주"),
+        ("017670", "SK텔레콤"),
+        ("030200", "KT"),
+        ("086790", "하나금융지주"),
+        ("003550", "LG"),
+        ("012330", "현대모비스"),
+        ("028260", "삼성물산"),
+        ("066570", "LG전자"),
+        ("032830", "삼성생명"),
+        ("096770", "SK이노베이션"),
+    ]
+
+    def __init__(self, env: str = "demo") -> None:
+        self._client = KisApiClient(env=env)
+
+    def list_candidates(self, market: str) -> list[SecuritySnapshot]:
+        market_key = market.strip().lower()
+        if market_key in {"국내", "kr", "korea"}:
+            return self._fetch_kr_candidates()
+        return []
+
+    def _fetch_kr_candidates(self) -> list[SecuritySnapshot]:
+        snapshots = []
+        for symbol, fallback_name in self.KR_CANDIDATES:
+            try:
+                snapshot = self._build_snapshot(symbol, fallback_name)
+                if snapshot is not None:
+                    snapshots.append(snapshot)
+            except Exception:
+                continue
+        return snapshots
+
+    def _build_snapshot(self, symbol: str, fallback_name: str) -> SecuritySnapshot | None:
+        price_data = self._client.domestic_price(symbol)
+        daily_data = self._client.inquire_daily_price(symbol, count=60)
+        fin_data = self._client.financial_ratio(symbol)
+
+        price = price_data.get("price")
+        name = price_data.get("name") or fallback_name
+        closes = [d["close"] for d in daily_data if d.get("close") is not None]
+
+        return SecuritySnapshot(
+            symbol=f"{symbol}.KS",
+            name=name,
+            market="국내",
+            price=price,
+            currency="KRW",
+            captured_at=datetime.now(),
+            technicals=_calc_technicals(closes),
+            fundamentals=FundamentalIndicators(
+                eps=fin_data.get("eps"),
+                per=fin_data.get("per"),
+                bps=fin_data.get("bps"),
+                pbr=fin_data.get("pbr"),
+                roe=fin_data.get("roe"),
+                dividend_yield=fin_data.get("dividend_yield"),
+            ),
+            risk=RiskSnapshot(
+                volatility_30d=_calc_volatility(closes),
+                delisting_risk="low",
+                short_interest_ratio=None,
+                negative_news_flags=[],
+            ),
+            notes=["Provider: KIS"],
+        )
+
+
+# ── 기술적 지표 계산 헬퍼 ──────────────────────────────────────────────────────
+
+def _ema(prices: list[float], period: int) -> list[float]:
+    if len(prices) < period:
+        return []
+    k = 2.0 / (period + 1)
+    result = [sum(prices[:period]) / period]
+    for p in prices[period:]:
+        result.append(p * k + result[-1] * (1 - k))
+    return result
+
+
+def _calc_technicals(closes: list[float]) -> TechnicalIndicators:
+    """closes: KIS API 응답 순서(최신→오래된)를 받아 지표 계산"""
+    if len(closes) < 2:
+        return TechnicalIndicators(None, None, None, None, None, None, None, None)
+
+    prices = list(reversed(closes))  # 오래된→최신 순으로 변환
+
+    ma5 = round(sum(prices[-5:]) / 5, 2) if len(prices) >= 5 else None
+    ma20 = round(sum(prices[-20:]) / 20, 2) if len(prices) >= 20 else None
+    ma60 = round(sum(prices[-60:]) / 60, 2) if len(prices) >= 60 else None
+
+    # RSI(14)
+    rsi = None
+    if len(prices) >= 15:
+        deltas = [prices[i] - prices[i - 1] for i in range(1, len(prices))]
+        avg_gain = sum(max(0.0, d) for d in deltas[-14:]) / 14
+        avg_loss = sum(max(0.0, -d) for d in deltas[-14:]) / 14
+        rsi = round(100.0 if avg_loss == 0 else 100 - 100 / (1 + avg_gain / avg_loss), 2)
+
+    # MACD(12, 26, 9)
+    macd_val = None
+    macd_signal = None
+    if len(prices) >= 26:
+        ema12 = _ema(prices, 12)
+        ema26 = _ema(prices, 26)
+        offset = len(ema12) - len(ema26)
+        macd_line = [e12 - e26 for e12, e26 in zip(ema12[offset:], ema26)]
+        if len(macd_line) >= 9:
+            signal_line = _ema(macd_line, 9)
+            macd_val = round(macd_line[-1], 4)
+            macd_signal = round(signal_line[-1], 4)
+
+    # 볼린저 밴드(20)
+    bb_upper = bb_lower = None
+    if ma20 is not None and len(prices) >= 20:
+        std20 = math.sqrt(sum((p - ma20) ** 2 for p in prices[-20:]) / 20)
+        bb_upper = round(ma20 + 2 * std20, 2)
+        bb_lower = round(ma20 - 2 * std20, 2)
+
+    return TechnicalIndicators(
+        rsi=rsi,
+        macd=macd_val,
+        macd_signal=macd_signal,
+        bollinger_upper=bb_upper,
+        bollinger_lower=bb_lower,
+        moving_average_5=ma5,
+        moving_average_20=ma20,
+        moving_average_60=ma60,
+    )
+
+
+def _calc_volatility(closes: list[float]) -> float | None:
+    """30일 연환산 변동성(%) 계산"""
+    prices = list(reversed(closes))
+    if len(prices) < 2:
+        return None
+    n = min(30, len(prices) - 1)
+    returns = [(prices[i] - prices[i - 1]) / prices[i - 1] for i in range(len(prices) - n, len(prices))]
+    mean = sum(returns) / len(returns)
+    variance = sum((r - mean) ** 2 for r in returns) / len(returns)
+    return round(math.sqrt(variance) * math.sqrt(252) * 100, 2)
+
+
 def build_provider(source: str) -> MarketDataProvider:
     _ = source
+    if KisApiClient.is_configured("demo"):
+        return KisMarketDataProvider("demo")
+    if KisApiClient.is_configured("real"):
+        return KisMarketDataProvider("real")
     return MockMarketDataProvider()
 
 
 def resolve_provider(source: str) -> tuple[MarketDataProvider, str, str | None]:
     _ = source
+    if KisApiClient.is_configured("demo"):
+        return KisMarketDataProvider("demo"), "kis-demo", None
+    if KisApiClient.is_configured("real"):
+        return KisMarketDataProvider("real"), "kis-real", None
     return MockMarketDataProvider(), "mock", None
