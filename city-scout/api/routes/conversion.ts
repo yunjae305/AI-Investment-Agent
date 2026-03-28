@@ -1,0 +1,1 @@
+import { Router } from 'express'; const router = Router(); router.post('/start', (req, res) => { res.json({ status: 'processing', progress: 0 }); }); export { router as conversionRouter };

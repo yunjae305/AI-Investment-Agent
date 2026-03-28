@@ -26,63 +26,76 @@ graph TD
 ```
 
 ## 2. Technology Description
-- Frontend: React@18 + Three.js@0.158 + tailwindcss@3 + vite
-- Initialization Tool: vite-init
-- Backend: Supabase (PostgreSQL + Storage)
-- 3D Engine: Three.js, @react-three/fiber, @react-three/drei
-- File Processing: shapefile@0.6, geojson@0.5
+
+* Frontend: React\@18 + Three.js\@0.158 + tailwindcss\@3 + vite
+
+* Initialization Tool: vite-init
+
+* Backend: Supabase (PostgreSQL + Storage)
+
+* 3D Engine: Three.js, @react-three/fiber, @react-three/drei
+
+* File Processing: shapefile\@0.6, geojson\@0.5
 
 ## 3. Route definitions
-| Route | Purpose |
-|-------|---------|
-| / | 홈페이지, 서비스 소개 및 시작하기 |
-| /upload | 지형 데이터 파일 업로드 페이지 |
-| /convert | 3D 변환 설정 및 진행 페이지 |
-| /dashboard | 분석 결과 대시보드 |
-| /login | 사용자 인증 페이지 |
+
+| Route      | Purpose             |
+| ---------- | ------------------- |
+| /          | 홈페이지, 서비스 소개 및 시작하기 |
+| /upload    | 지형 데이터 파일 업로드 페이지   |
+| /convert   | 3D 변환 설정 및 진행 페이지   |
+| /dashboard | 분석 결과 대시보드          |
+| /login     | 사용자 인증 페이지          |
 
 ## 4. API definitions
 
 ### 4.1 File Upload API
+
 ```
 POST /api/upload/terrain
 ```
 
 Request:
-| Param Name | Param Type | isRequired | Description |
-|------------|-------------|-------------|-------------|
-| file | File | true | 지형 데이터 파일 (GeoJSON/Shapefile) |
-| coordinate_system | string | true | 좌표계 정보 (WGS84, UTM 등) |
+
+| Param Name         | Param Type | isRequired | Description                   |
+| ------------------ | ---------- | ---------- | ----------------------------- |
+| file               | File       | true       | 지형 데이터 파일 (GeoJSON/Shapefile) |
+| coordinate\_system | string     | true       | 좌표계 정보 (WGS84, UTM 등)         |
 
 Response:
+
 | Param Name | Param Type | Description |
-|------------|-------------|-------------|
-| upload_id | string | 파일 업로드 식별자 |
-| status | string | 업로드 상태 |
+| ---------- | ---------- | ----------- |
+| upload\_id | string     | 파일 업로드 식별자  |
+| status     | string     | 업로드 상태      |
 
 ### 4.2 Conversion API
+
 ```
 POST /api/convert/start
 ```
 
 Request:
-| Param Name | Param Type | isRequired | Description |
-|------------|-------------|-------------|-------------|
-| upload_id | string | true | 파일 업로드 ID |
-| building_height | number | false | 건물 높이 배수 (기본값: 1.0) |
-| texture_quality | string | false | 텍스처 품질 (low/medium/high) |
+
+| Param Name       | Param Type | isRequired | Description              |
+| ---------------- | ---------- | ---------- | ------------------------ |
+| upload\_id       | string     | true       | 파일 업로드 ID                |
+| building\_height | number     | false      | 건물 높이 배수 (기본값: 1.0)      |
+| texture\_quality | string     | false      | 텍스처 품질 (low/medium/high) |
 
 ### 4.3 Analysis API
+
 ```
 GET /api/analysis/accessibility
 ```
 
 Request:
-| Param Name | Param Type | isRequired | Description |
-|------------|-------------|-------------|-------------|
-| world_id | string | true | 생성된 월드 ID |
-| start_point | object | true | 출발지 좌표 {x, y, z} |
-| end_point | object | true | 목적지 좌표 {x, y, z} |
+
+| Param Name   | Param Type | isRequired | Description      |
+| ------------ | ---------- | ---------- | ---------------- |
+| world\_id    | string     | true       | 생성된 월드 ID        |
+| start\_point | object     | true       | 출발지 좌표 {x, y, z} |
+| end\_point   | object     | true       | 목적지 좌표 {x, y, z} |
 
 ## 5. Server architecture diagram
 
@@ -107,6 +120,7 @@ graph TD
 ## 6. Data model
 
 ### 6.1 Data model definition
+
 ```mermaid
 erDiagram
   USER ||--o{ UPLOAD : creates
@@ -161,6 +175,7 @@ erDiagram
 ```
 
 ### 6.2 Data Definition Language
+
 ```sql
 -- Users table
 CREATE TABLE users (
@@ -230,3 +245,4 @@ CREATE POLICY "Users can create uploads" ON uploads FOR INSERT WITH CHECK (auth.
 CREATE POLICY "Users can view own analysis" ON analysis FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can create analysis" ON analysis FOR INSERT WITH CHECK (auth.uid() = user_id);
 ```
+

@@ -1,0 +1,40 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CityScout - 3D Urban Analysis</title>
+  </head>
+  <body>
+    <div id="root">
+      <div style="padding: 16px; font-family: system-ui, -apple-system, Segoe UI, sans-serif;">
+        Loading CityScout...
+      </div>
+    </div>
+    <script>
+      (function () {
+        function renderBootError(err) {
+          try {
+            var root = document.getElementById('root');
+            if (!root) return;
+            var message = (err && (err.stack || err.message)) ? (err.stack || err.message) : String(err);
+            root.innerHTML = '';
+            var pre = document.createElement('pre');
+            pre.style.whiteSpace = 'pre-wrap';
+            pre.style.padding = '16px';
+            pre.style.background = '#111827';
+            pre.style.color = '#f9fafb';
+            pre.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+            pre.textContent = 'CityScout failed to start:\n\n' + message;
+            root.appendChild(pre);
+          } catch (_) {
+          }
+        }
+
+        window.addEventListener('error', function (e) { renderBootError(e.error || e.message); });
+        window.addEventListener('unhandledrejection', function (e) { renderBootError(e.reason || e); });
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
