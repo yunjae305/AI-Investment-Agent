@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 
 from ai_invest_agent.analysis import build_recommendations
 from ai_invest_agent.document_export import export_report
@@ -53,6 +53,8 @@ load_env_file(BASE_DIR / ".env")
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 RESEARCH_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
+REACT_DIST = BASE_DIR / "static" / "dist"
+
 app = Flask(__name__)
 app.json.ensure_ascii = False
 
@@ -67,13 +69,32 @@ DEFAULT_FORM = {
 }
 
 
+def _react_index():
+    """React 빌드가 있으면 index.html을 반환, 없으면 None."""
+    index_file = REACT_DIST / "index.html"
+    if index_file.exists():
+        return send_file(index_file)
+    return None
+
+
+@app.get("/assets/<path:filename>")
+def react_assets(filename: str):
+    return send_from_directory(REACT_DIST / "assets", filename)
+
+
 @app.get("/")
 def index():
+    react = _react_index()
+    if react is not None:
+        return react
     return render_template("index.html", form=DEFAULT_FORM, result=None, error=None)
 
 
 @app.get("/mock-trading")
 def mock_trading_dashboard():
+    react = _react_index()
+    if react is not None:
+        return react
     _ensure_auto_trading_activity()
     orders = _load_mock_orders(limit=300)
     summary = _build_summary(orders)
