@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import json
@@ -605,4 +605,5 @@ class RecommendationLike:
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.getenv("PORT", "5000").strip() or "5000")
+    app.run(host="0.0.0.0", port=port, debug=True)
