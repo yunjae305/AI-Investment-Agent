@@ -1,1 +1,0 @@
-import { Router } from 'express'; const router = Router(); router.get('/accessibility', (req, res) => { res.json({ path: [{ x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 10 }], distance: 14.14, accessibility_score: 85 }); }); export { router as analysisRouter };
