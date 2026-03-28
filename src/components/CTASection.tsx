@@ -12,10 +12,10 @@ const CTASection = () => {
           </div>
           <div className="relative space-y-6 max-w-2xl mx-auto">
             <h2 className="font-display text-3xl md:text-4xl font-bold text-primary-foreground">
-              지금 바로 AI 투자를 시작하세요
+              지금 바로 SPKI와 투자를 시작하세요
             </h2>
             <p className="text-primary-foreground/80 text-lg">
-              가입 후 3분 만에 AI 에이전트가 맞춤 포트폴리오를 추천합니다.
+              가입 후 3분 만에 SPKI가 맞춤 포트폴리오를 추천합니다.
               첫 달 수수료 무료!
             </p>
             <Button variant="gold" size="lg" className="text-base px-10 py-6 rounded-xl gap-2">
