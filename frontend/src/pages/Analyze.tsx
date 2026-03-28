@@ -22,7 +22,7 @@ const schema = z.object({
   duration: z.enum(["단기", "중기", "장기"]),
 });
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = Required<z.infer<typeof schema>>;
 
 const riskColor: Record<string, string> = {
   low: "bg-green-100 text-green-800",
@@ -40,7 +40,7 @@ export default function Analyze() {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      asset: "10000000",
+      asset: "10,000,000",
       propensity: "중립형",
       market: "국내",
       duration: "중기",
@@ -93,12 +93,22 @@ export default function Analyze() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="container mx-auto px-6 py-8">
-          <p className="text-sm font-medium text-primary mb-1">Mock Data + Paper Trading</p>
-          <h1 className="font-display text-3xl font-bold text-charcoal">모의 데이터 기반 AI 투자 대시보드</h1>
-          <p className="mt-2 text-warm-gray max-w-2xl">
-            실제 시세 API 없이 모의 데이터를 사용합니다. 분석 결과를 확인한 뒤 투자 시작 버튼을 누르면
-            자동 주문이 실행되고, 실시간 모의 매수/매도 현황 페이지가 열립니다.
-          </p>
+          <div className="flex items-stretch gap-4">
+            <img
+              src="/imgicon/jjoayo.png"
+              alt="logo"
+              className="h-full w-auto max-w-[96px] shrink-0 object-contain"
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-primary mb-1">Stock Portfolio Korea Investment</p>
+              <h1 className="font-display text-3xl font-bold text-charcoal">모의 데이터 기반 SPKI 투자 대시보드</h1>
+              <p className="mt-2 text-warm-gray w-full">
+                실제 시세 API 없이 모의 데이터를 사용합니다.
+                <br />
+                분석 결과를 확인한 뒤 투자 시작 버튼을 누르면 자동 주문이 실행되고, 실시간 모의 매수/매도 현황 페이지가 열립니다.
+              </p>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -120,7 +130,16 @@ export default function Analyze() {
                       <FormItem>
                         <FormLabel>자산 (KRW)</FormLabel>
                         <FormControl>
-                          <Input placeholder="10000000" {...field} />
+                          <Input
+                            placeholder="10000000"
+                            inputMode="numeric"
+                            value={field.value}
+                            onChange={(event) => {
+                              const digits = event.target.value.replace(/[^\d]/g, "");
+                              const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                              field.onChange(formatted);
+                            }}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -258,8 +277,7 @@ export default function Analyze() {
           )}
 
           {result && (
-            <>
-              {/* #1 분석 요약 */}
+            <div className="space-y-6">
               <Card>
                 <CardHeader>
                   <p className="text-xs font-semibold text-primary uppercase tracking-wider">#1</p>
@@ -295,7 +313,6 @@ export default function Analyze() {
                 </CardContent>
               </Card>
 
-              {/* #2 추천 종목 */}
               {result.rows?.length > 0 && (
                 <Card>
                   <CardHeader>
@@ -342,97 +359,68 @@ export default function Analyze() {
                 </Card>
               )}
 
-              {/* #3 재무 지표 그래프 */}
-              {result.metric_charts?.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <p className="text-xs font-semibold text-primary uppercase tracking-wider">#3</p>
-                    <CardTitle>재무 지표 그래프</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {result.metric_charts.map((chart, i) => (
-                        <div key={i} className="border rounded-lg p-4">
-                          <h3 className="font-medium text-charcoal mb-3 text-sm">{chart.title}</h3>
-                          <div
-                            className="overflow-x-auto"
-                            dangerouslySetInnerHTML={{ __html: chart.svg }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* #4 재무 지표 비교 표 */}
-              {result.rows?.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <p className="text-xs font-semibold text-primary uppercase tracking-wider">#4</p>
-                    <CardTitle>재무 지표 비교 표</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>종목</TableHead>
-                            <TableHead>EPS</TableHead>
-                            <TableHead>PER</TableHead>
-                            <TableHead>ROE</TableHead>
-                            <TableHead>BPS</TableHead>
-                            <TableHead>PBR</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {result.rows.map((row, i) => (
-                            <TableRow key={i}>
-                              <TableCell>
-                                <div className="font-semibold whitespace-nowrap">{row.name}</div>
-                                <div className="text-xs text-muted-foreground">{row.symbol}</div>
-                              </TableCell>
-                              <TableCell>{row.financial_metrics?.eps}</TableCell>
-                              <TableCell>{row.financial_metrics?.per}</TableCell>
-                              <TableCell>{row.financial_metrics?.roe}</TableCell>
-                              <TableCell>{row.financial_metrics?.bps}</TableCell>
-                              <TableCell>{row.financial_metrics?.pbr}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* #5 자동 실행 Payload */}
-              {result.signals?.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <p className="text-xs font-semibold text-primary uppercase tracking-wider">#5</p>
-                    <CardTitle>자동 실행 Payload</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {result.signals.map((signal, i) => (
-                        <div key={i} className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold text-charcoal">{signal.symbol}</span>
-                            <Badge variant={signal.action === "BUY" ? "default" : "destructive"}>
-                              {signal.action}
-                            </Badge>
+                {result.metric_charts?.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <p className="text-xs font-semibold text-primary uppercase tracking-wider">#3</p>
+                      <CardTitle>재무 지표 그래프</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {result.metric_charts.map((chart, i) => (
+                          <div key={i} className="border rounded-lg p-4">
+                            <h3 className="font-medium text-charcoal mb-3 text-sm">{chart.title}</h3>
+                            <div
+                              className="overflow-x-auto"
+                              dangerouslySetInnerHTML={{ __html: chart.svg }}
+                            />
                           </div>
-                          <pre className="text-xs text-muted-foreground overflow-auto whitespace-pre-wrap bg-muted rounded p-2">
-                            {signal.pretty_json}
-                          </pre>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {result.rows?.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <p className="text-xs font-semibold text-primary uppercase tracking-wider">#4</p>
+                      <CardTitle>재무 지표 비교 표</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>종목</TableHead>
+                              <TableHead>EPS</TableHead>
+                              <TableHead>PER</TableHead>
+                              <TableHead>ROE</TableHead>
+                              <TableHead>BPS</TableHead>
+                              <TableHead>PBR</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {result.rows.map((row, i) => (
+                              <TableRow key={i}>
+                                <TableCell>
+                                  <div className="font-semibold whitespace-nowrap">{row.name}</div>
+                                  <div className="text-xs text-muted-foreground">{row.symbol}</div>
+                                </TableCell>
+                                <TableCell>{row.financial_metrics?.eps}</TableCell>
+                                <TableCell>{row.financial_metrics?.per}</TableCell>
+                                <TableCell>{row.financial_metrics?.roe}</TableCell>
+                                <TableCell>{row.financial_metrics?.bps}</TableCell>
+                                <TableCell>{row.financial_metrics?.pbr}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+            </div>
           )}
         </main>
       </div>

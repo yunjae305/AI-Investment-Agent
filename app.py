@@ -54,6 +54,8 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 RESEARCH_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
 REACT_DIST = BASE_DIR / "static" / "dist"
+FAVICON_FILE = BASE_DIR / "imgicon" / "jjoayo.png"
+IMGICON_DIR = BASE_DIR / "imgicon"
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -80,6 +82,19 @@ def _react_index():
 @app.get("/assets/<path:filename>")
 def react_assets(filename: str):
     return send_from_directory(REACT_DIST / "assets", filename)
+
+
+@app.get("/favicon.ico")
+@app.get("/favicon.png")
+@app.get("/api/favicon.ico")
+@app.get("/api/favicon.png")
+def favicon():
+    return send_file(FAVICON_FILE, mimetype="image/png", conditional=True)
+
+
+@app.get("/imgicon/<path:filename>")
+def imgicon(filename: str):
+    return send_from_directory(IMGICON_DIR, filename)
 
 
 @app.get("/")
@@ -169,6 +184,18 @@ def execute_api():
 def stop_auto_trading_api():
     _set_auto_trading_enabled(False)
     return jsonify({"ok": True, "auto_trading_enabled": False})
+
+
+@app.post("/api/auto-trading/resume")
+def resume_auto_trading_api():
+    _set_auto_trading_enabled(True)
+    return jsonify({"ok": True, "auto_trading_enabled": True})
+
+
+@app.get("/api/auto-trading/status")
+def auto_trading_status_api():
+    state = _load_auto_state()
+    return jsonify({"auto_trading_enabled": state.get("enabled", False)})
 
 
 @app.get("/api/config-status")
@@ -339,8 +366,15 @@ def _load_mock_orders(limit: int = 300) -> list[dict]:
         except json.JSONDecodeError:
             continue
     raw_rows.reverse()
+    auto_state = _load_auto_state()
+    trading_enabled = auto_state.get("enabled", False)
     now = datetime.now(timezone.utc)
-    return [_simulate_live_order(row, now=now) for row in raw_rows[:limit]]
+    if not trading_enabled:
+        stopped_at = _parse_iso_utc(str(auto_state.get("stopped_at", "")).strip())
+        frozen_now = stopped_at if stopped_at else now
+    else:
+        frozen_now = now
+    return [_simulate_live_order(row, now=frozen_now) for row in raw_rows[:limit]]
 
 
 def _parse_iso_utc(value: str | None) -> datetime | None:
@@ -444,6 +478,14 @@ def _build_summary(orders: list[dict]) -> dict:
     sell_count = sum(1 for order in orders if str(order.get("action", "")).upper() == "SELL")
     filled_count = sum(1 for order in orders if order.get("status") == "filled")
     total_pnl = round(sum(float(order.get("pnl_amount", 0) or 0) for order in orders), 2)
+    total_base_amount = 0.0
+    for order in orders:
+        fill_price = float(order.get("fill_price", 0) or 0)
+        filled_qty = float(order.get("filled_quantity", 0) or 0)
+        if fill_price and filled_qty:
+            total_base_amount += abs(fill_price) * abs(filled_qty)
+    total_base_amount = round(total_base_amount, 2)
+    total_pnl_pct = round((total_pnl / total_base_amount) * 100, 2) if total_base_amount else 0.0
     return {
         "mode": "mock",
         "total": len(orders),
@@ -451,6 +493,8 @@ def _build_summary(orders: list[dict]) -> dict:
         "sell_count": sell_count,
         "filled_count": filled_count,
         "total_pnl": total_pnl,
+        "total_pnl_pct": total_pnl_pct,
+        "total_base_amount": total_base_amount,
         "ledger_file": str(MOCK_LEDGER_FILE),
     }
 
@@ -492,6 +536,10 @@ def _save_auto_state(state: dict) -> None:
 def _set_auto_trading_enabled(enabled: bool) -> None:
     state = _load_auto_state()
     state["enabled"] = bool(enabled)
+    if not enabled:
+        state["stopped_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        state.pop("stopped_at", None)
     _save_auto_state(state)
 
 

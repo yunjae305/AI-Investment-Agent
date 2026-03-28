@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -13,17 +13,36 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Mock Trading Dashboard</p>
+          <p class="eyebrow">SPKI Trading Dashboard</p>
           <h1>모의 매수/매도 현황</h1>
-          <p class="hero-text">주문 원장을 기준으로 최근 모의 거래 내역과 체결 진행률, 실시간 손익을 표시합니다.</p>
+          <p class="hero-text">주문을 기준으로 최근 모의 거래 내역과 체결 진행률, 실시간 손익을 표시합니다.</p>
         </div>
         <div class="hero-card">
           <p class="hero-card-label">Summary</p>
-          <p><strong>전체 주문:</strong> <span id="sum-total">{{ summary.total }}</span></p>
-          <p><strong>매수:</strong> <span id="sum-buy">{{ summary.buy_count }}</span></p>
-          <p><strong>매도:</strong> <span id="sum-sell">{{ summary.sell_count }}</span></p>
-          <p><strong>체결 완료:</strong> <span id="sum-filled">{{ summary.filled_count }}</span></p>
-          <p><strong>실시간 평가손익:</strong> <span id="sum-pnl" class="{% if summary.total_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">{{ summary.total_pnl }}</span></p>
+          <div class="hero-card-row">
+            {% set pnl_pct = summary.total_pnl_pct | float %}
+            {% if pnl_pct <= -10 %}
+              {% set character_src = "/imgicon/ggang.png" %}
+            {% elif pnl_pct < 0 %}
+              {% set character_src = "/imgicon/heeng.png" %}
+            {% elif pnl_pct == 0 %}
+              {% set character_src = "/imgicon/yolsimehat.png" %}
+            {% else %}
+              {% set character_src = "/imgicon/jjoayo.png" %}
+            {% endif %}
+            <img id="summary-character" class="hero-card-character" src="{{ character_src }}" alt="character">
+            <div class="hero-card-stats">
+              <p><strong>전체 주문:</strong> <span id="sum-total">{{ summary.total }}</span></p>
+              <p><strong>매수:</strong> <span id="sum-buy">{{ summary.buy_count }}</span></p>
+              <p><strong>매도:</strong> <span id="sum-sell">{{ summary.sell_count }}</span></p>
+              <p><strong>체결 완료:</strong> <span id="sum-filled">{{ summary.filled_count }}</span></p>
+              <p>
+                <strong>실시간 평가손익:</strong>
+                <span id="sum-pnl" class="{% if summary.total_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">{{ summary.total_pnl }}</span>
+                <span id="sum-pnl-pct" class="{% if summary.total_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">({{ summary.total_pnl_pct }}%)</span>
+              </p>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -40,7 +59,7 @@
           <table>
             <thead>
               <tr>
-                <th>시간(UTC)</th>
+                <th>시간(KST)</th>
                 <th>종목</th>
                 <th>액션</th>
                 <th>수량</th>
@@ -57,14 +76,17 @@
             <tbody id="orders-body">
               {% for order in orders %}
               <tr>
-                <td>{{ order.created_at }}</td>
+                <td class="created-at" data-ts="{{ order.created_at }}">{{ order.created_at }}</td>
                 <td><strong>{{ order.symbol_name }}</strong><br><span>{{ order.symbol }}</span></td>
                 <td>{{ order.action }}</td>
                 <td>{{ order.quantity }}</td>
-                <td><span class="status-pill status-{{ order.status }}">{{ order.status }}</span></td>
+                <td>
+                  {% set status_map = {"queued":"대기","sent":"전송됨","accepted":"접수","partial_fill":"부분 체결","filled":"체결 완료"} %}
+                  <span class="status-pill status-{{ order.status }}">{{ status_map.get(order.status, order.status) }}</span>
+                </td>
                 <td>
                   <div class="progress-wrap">
-                    <div class="progress-bar" style="width: {{ order.progress_pct }}%;"></div>
+                    <div class="progress-bar" data-progress="{{ order.progress_pct }}"></div>
                   </div>
                   <small>{{ order.progress_pct }}%</small>
                 </td>
@@ -86,6 +108,43 @@
       (function () {
         const stopBtn = document.getElementById("stop-auto-btn");
         const stopStatus = document.getElementById("stop-status");
+        function pad2(value) {
+          return String(value).padStart(2, "0");
+        }
+        function formatKst(isoString) {
+          const date = new Date(isoString);
+          if (Number.isNaN(date.getTime())) return isoString;
+          const kstDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+          return `${kstDate.getUTCFullYear()}-${pad2(kstDate.getUTCMonth() + 1)}-${pad2(kstDate.getUTCDate())} ${pad2(
+            kstDate.getUTCHours(),
+          )}:${pad2(kstDate.getUTCMinutes())}`;
+        }
+        function humanizeRationale(order) {
+          const symbol = String(order.symbol || "").trim();
+          const symbolName = String(order.symbol_name || "").trim();
+          const action = String(order.action || "").trim().toUpperCase();
+          const fallback =
+            symbolName || symbol
+              ? `${symbolName || symbol} ${action === "BUY" ? "매수" : action === "SELL" ? "매도" : "관망"} 신호`
+              : "자동매매 신호";
+          let text = String(order.rationale || "").trim();
+          if (!text) return fallback;
+          text = text.replace(/^자동\\s*모의매매\\s*:\\s*/u, "자동매매: ");
+          if (symbol) {
+            const replacement = symbolName ? `${symbolName}(${symbol})` : symbol;
+            text = text.split(symbol).join(replacement);
+          }
+          return text;
+        }
+        document.querySelectorAll(".progress-bar[data-progress]").forEach(function (el) {
+          const raw = el.getAttribute("data-progress") || "0";
+          const pct = Number(raw) || 0;
+          el.style.width = `${pct}%`;
+        });
+        document.querySelectorAll(".created-at[data-ts]").forEach(function (el) {
+          const ts = el.getAttribute("data-ts") || "";
+          el.textContent = formatKst(ts);
+        });
 
         if (stopBtn) {
           stopBtn.addEventListener("click", async function () {
@@ -112,6 +171,13 @@
             const payload = await res.json();
             const orders = payload.orders || [];
             const summary = payload.summary || {};
+            const statusMap = {
+              queued: "대기",
+              sent: "전송됨",
+              accepted: "접수",
+              partial_fill: "부분 체결",
+              filled: "체결 완료",
+            };
 
             document.getElementById("sum-total").textContent = summary.total || 0;
             document.getElementById("sum-buy").textContent = summary.buy_count || 0;
@@ -119,9 +185,28 @@
             document.getElementById("sum-filled").textContent = summary.filled_count || 0;
 
             const sumPnl = document.getElementById("sum-pnl");
+            const sumPnlPct = document.getElementById("sum-pnl-pct");
             const totalPnl = Number(summary.total_pnl || 0);
             sumPnl.textContent = totalPnl.toFixed(2);
             sumPnl.className = totalPnl >= 0 ? "pnl-positive" : "pnl-negative";
+            if (sumPnlPct) {
+              const totalPct = Number(summary.total_pnl_pct || 0);
+              sumPnlPct.textContent = `(${totalPct.toFixed(2)}%)`;
+              sumPnlPct.className = totalPnl >= 0 ? "pnl-positive" : "pnl-negative";
+            }
+            const summaryCharacter = document.getElementById("summary-character");
+            if (summaryCharacter) {
+              const totalPct = Number(summary.total_pnl_pct || 0);
+              const pctRounded = Number(totalPct.toFixed(2));
+              summaryCharacter.src =
+                pctRounded <= -10
+                  ? "/imgicon/ggang.png"
+                  : pctRounded < 0
+                    ? "/imgicon/heeng.png"
+                    : pctRounded === 0
+                      ? "/imgicon/yolsimehat.png"
+                      : "/imgicon/jjoayo.png";
+            }
 
             const body = document.getElementById("orders-body");
             body.innerHTML = "";
@@ -129,12 +214,14 @@
             for (const order of orders) {
               const tr = document.createElement("tr");
               const pnl = Number(order.pnl_amount || 0);
+              const statusKey = order.status || "queued";
+              const statusLabel = statusMap[statusKey] || statusKey;
               tr.innerHTML = `
-                <td>${order.created_at || ""}</td>
+                <td>${formatKst(order.created_at || "")}</td>
                 <td><strong>${order.symbol_name || order.symbol || ""}</strong><br><span>${order.symbol || ""}</span></td>
                 <td>${order.action || ""}</td>
                 <td>${order.quantity || 0}</td>
-                <td><span class="status-pill status-${order.status || "queued"}">${order.status || ""}</span></td>
+                <td><span class="status-pill status-${statusKey}">${statusLabel}</span></td>
                 <td>
                   <div class="progress-wrap">
                     <div class="progress-bar" style="width: ${order.progress_pct || 0}%;"></div>
@@ -146,7 +233,7 @@
                 <td>${order.fill_price ?? ""}</td>
                 <td>${order.mark_price ?? ""}</td>
                 <td class="${pnl >= 0 ? "pnl-positive" : "pnl-negative"}">${pnl.toFixed(2)}</td>
-                <td>${order.rationale || ""}</td>
+                <td>${humanizeRationale(order)}</td>
               `;
               body.appendChild(tr);
             }

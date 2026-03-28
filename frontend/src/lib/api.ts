@@ -127,3 +127,17 @@ export async function stopAutoTrading(): Promise<void> {
     throw new Error((body as { error?: string }).error ?? "자동매매 중지 실패");
   }
 }
+
+export async function resumeAutoTrading(): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/auto-trading/resume`, { method: "POST" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !(body as { ok?: boolean }).ok) {
+    throw new Error((body as { error?: string }).error ?? "자동매매 재개 실패");
+  }
+}
+
+export async function fetchTradingStatus(): Promise<{ auto_trading_enabled: boolean }> {
+  const res = await fetch(`${BASE_URL}/api/auto-trading/status`);
+  if (!res.ok) throw new Error("상태 조회 실패");
+  return res.json();
+}

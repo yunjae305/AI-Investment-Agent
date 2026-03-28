@@ -63,9 +63,46 @@ pre,
   min-height: 200px;
 }
 
+.hero-title {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.hero-logo {
+  width: auto;
+  height: 100%;
+  max-width: 96px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.hero-title-text {
+  min-width: 0;
+}
+
 .hero-card {
   padding: 22px;
   background: linear-gradient(180deg, rgba(255, 228, 206, 0.92), rgba(255, 245, 235, 0.85));
+}
+
+.hero-card-row {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.hero-card-stats {
+  flex: 1;
+  min-width: 0;
+}
+
+.hero-card-character {
+  flex: 1;
+  width: 50%;
+  height: 100%;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .eyebrow,
@@ -279,17 +316,17 @@ td span,
   color: var(--bad);
 }
 
-.risk-??쓬 {
+.risk-낮음 {
   background: rgba(47, 106, 71, 0.12);
   color: var(--good);
 }
 
-.risk-蹂댄넻 {
+.risk-보통 {
   background: rgba(154, 106, 0, 0.12);
   color: var(--mid);
 }
 
-.risk-?믪쓬 {
+.risk-높음 {
   background: rgba(139, 35, 35, 0.12);
   color: var(--bad);
 }

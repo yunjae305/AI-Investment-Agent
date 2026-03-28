@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -7,18 +7,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Mock Data + Paper Trading</p>
-          <h1>모의 데이터 기반 AI 투자 대시보드</h1>
-          <p class="hero-text">
-            실제 시세 API 없이 모의 데이터를 사용합니다. 분석 결과를 확인한 뒤 투자 시작 버튼을 누르면
-            자동 주문이 실행되고, 실시간 모의 매수/매도 현황 페이지가 열립니다.
-          </p>
+          <div class="hero-title">
+            <img class="hero-logo" src="/imgicon/jjoayo.png" alt="logo">
+            <div class="hero-title-text">
+              <p class="eyebrow">Stock Portfolio Korea Investment</p>
+              <h1>모의 데이터 기반 SPKI 투자 대시보드</h1>
+              <p class="hero-text">
+                실제 시세 API 없이 모의 데이터를 사용합니다.<br>
+                분석 결과를 확인한 뒤 투자 시작 버튼을 누르면 자동 주문이 실행되고, 실시간 모의 매수/매도 현황 페이지가 열립니다.
+              </p>
+            </div>
+          </div>
         </div>
         <div class="hero-card">
           <p class="hero-card-label">Current Source</p>
@@ -41,7 +47,7 @@
           <form action="{{ url_for('analyze') }}" method="post" class="input-form">
             <label>
               <span>자산 (KRW)</span>
-              <input type="text" name="asset" value="{{ form.asset }}" placeholder="10000000">
+              <input type="text" name="asset" value="{{ form.asset }}" placeholder="10000000" inputmode="numeric">
             </label>
 
             <label>
@@ -188,24 +194,6 @@
               </table>
             </div>
           </section>
-
-          <section class="panel">
-            <div class="section-heading">
-              <p class="section-kicker">#5</p>
-              <h2>자동 실행 Payload</h2>
-            </div>
-            <div class="signal-grid">
-              {% for signal in result.signals %}
-              <article class="signal-card">
-                <div class="card-topline">
-                  <strong>{{ signal.symbol }}</strong>
-                  <span class="signal-action">{{ signal.action }}</span>
-                </div>
-                <pre>{{ signal.pretty_json }}</pre>
-              </article>
-              {% endfor %}
-            </div>
-          </section>
           {% else %}
           <section class="panel empty-state">
             <p class="section-kicker">Ready</p>
@@ -223,7 +211,7 @@
         const status = document.getElementById("trade-status");
         if (!btn || !status) return;
 
-        const rawSignals = {{ result.signals | map(attribute="pretty_json") | list | tojson }};
+        const rawSignals = JSON.parse('{{ result.signals | map(attribute="pretty_json") | list | tojson }}');
 
         function decodeSignals(rawList) {
           const parsedSignals = [];
@@ -263,5 +251,19 @@
       })();
     </script>
     {% endif %}
+    <script>
+      (function () {
+        const asset = document.querySelector('input[name="asset"]');
+        if (!asset) return;
+        function format(value) {
+          const digits = String(value || "").replace(/[^\d]/g, "");
+          return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+        asset.value = format(asset.value);
+        asset.addEventListener("input", function () {
+          asset.value = format(asset.value);
+        });
+      })();
+    </script>
   </body>
 </html>
